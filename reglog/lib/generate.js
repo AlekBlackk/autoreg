@@ -13,10 +13,9 @@
   const NOUN = ['meadow','pine','orbit','ridge','marsh','cove','glen','ford','vale','birch',
     'cedar','delta','ember','fjord','grove','heath','islet','knoll','loch','mesa',
     'nook','oasis','peak','quay','reef','spire','tor','urn','vault','weir',
-    'yard','zone','arch','bay','crag','dune2','eddy','field','gulf','holt',
+    'yard','zone','arch','bay','crag','thicket','eddy','field','gulf','holt',
     'isle','jetty','kiln','lagoon','moor','nave','oak','path','quarry','ravine',
     'shore','trail','upland','vista','well','yield','arbor','bluff','cape','dell'];
-  NOUN[NOUN.indexOf('dune2')] = 'thicket'; // устранить единственное неаккуратное имя в списке
 
   const FIRST = ['Alex','Jordan','Taylor','Morgan','Casey','Riley','Avery','Quinn','Reese','Skyler',
     'Drew','Emerson','Rowan','Sawyer','Blake','Cameron','Dakota','Elliot','Finley','Harper',
@@ -64,17 +63,23 @@
     const classes = buildAlphabetClasses(symbols);
     const alphabet = classes.join('');
     const chars = [];
-    for (const cls of classes) chars.push(cls[gen.randomInt(cls.length)]);
+    // Гарантируем по одному символу на класс, но не больше len классов —
+    // иначе при len меньше числа активных классов результат выходит длиннее len
+    // (это был баг ревью Task 2: password(2,false) возвращал 3 символа вместо 2).
+    const guaranteed = classes.slice(0, Math.min(classes.length, len));
+    for (const cls of guaranteed) chars.push(cls[gen.randomInt(cls.length)]);
     while (chars.length < len) chars.push(alphabet[gen.randomInt(alphabet.length)]);
-    return gen.shuffle(chars).slice(0, Math.max(len, chars.length) === len ? len : chars.length).join('');
+    return gen.shuffle(chars).slice(0, len).join('');
   };
 
+  // Внутренние пресеты — не вешаются на RegLog.gen: публичный контракт модуля
+  // ограничен восемью функциями из §4 спеки (randomInt/pick/shuffle/password/
+  // passwordForPolicy/username/sanitizeLocalPart/personName), лишний экспорт
+  // gen.PRESETS был снят по итогам ревью Task 2.
   const PRESETS = {
     strong: { len: 20, symbols: true },
-    safe: { len: 16, symbols: false },
-    legacy: { len: 12, symbols: false, exactUpper: 1, exactDigit: 1 }
+    safe: { len: 16, symbols: false }
   };
-  gen.PRESETS = PRESETS;
 
   gen.passwordForPolicy = function passwordForPolicy(policy) {
     if (policy === 'legacy') {

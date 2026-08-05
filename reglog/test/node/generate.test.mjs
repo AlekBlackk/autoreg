@@ -19,6 +19,16 @@ test('password respects length and required classes', () => {
   assert.ok(/[a-z]/.test(p) && /[A-Z]/.test(p) && /[2-9]/.test(p) && /[!@#$%^&*\-_=+?]/.test(p));
 });
 
+test('password respects len even when len is smaller than the number of active classes', () => {
+  assert.equal(gen.password(2, false).length, 2);
+  assert.equal(gen.password(1, true).length, 1);
+  assert.equal(gen.password(0, false).length, 0);
+});
+
+test('gen.PRESETS is not exported on the public namespace', () => {
+  assert.equal(gen.PRESETS, undefined);
+});
+
 test('passwordForPolicy legacy has exactly one upper and one digit, length 12', () => {
   const p = gen.passwordForPolicy('legacy');
   assert.equal(p.length, 12);
