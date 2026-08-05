@@ -108,3 +108,68 @@ test('next marks provider rejected and switches to the following one', async () 
   const rejected = await RegLog.store.getRejected();
   assert.deepEqual(rejected['switch.com'], ['mailtm']);
 });
+
+test('poll backs off to 15s interval after 13+ consecutive empty list results', async () => {
+  const RegLog = await freshMail();
+
+  // Create a minimal session
+  const session = {
+    provider: 'mailtm',
+    address: 'test@example.com',
+    secret: { token: 'tok_test', password: 'pwd', accountId: 'acc_test' },
+    createdAt: Date.now(),
+    touchedAt: Date.now()
+  };
+
+  const intervals = [];
+  const callbacks = [];
+  const realSetTimeout = globalThis.setTimeout;
+
+  // Mock setTimeout to capture intervals and callbacks for deferred invocation
+  globalThis.setTimeout = (callback, delay) => {
+    intervals.push(delay);
+    callbacks.push(callback);
+    return {};
+  };
+
+  try {
+    // Mock adapter.list to return empty messages, triggering empty streak
+    const mockAdapter = {
+      ...RegLog.mail.adapters[0],
+      sessionTtlMs: 0,
+      list: async () => []
+    };
+    const originalAdapters = RegLog.mail.adapters;
+    RegLog.mail.adapters = [mockAdapter];
+
+    const batches = [];
+    const stop = RegLog.mail.poll(session, (batch) => {
+      batches.push(batch);
+    });
+
+    // Wait a tick for first async operation to complete and schedule next tick
+    await new Promise(r => realSetTimeout(r, 0));
+
+    // Now manually drive ticks by invoking scheduled callbacks
+    // We need 14+ scheduled ticks (1 initial outside loop + 13+ more) to exceed emptyStreak > 12
+    for (let i = 0; i < 14 && callbacks.length > 0; i++) {
+      const cb = callbacks.shift();
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise(r => realSetTimeout(() => {
+        cb(); // Invoke tick
+        r(); // Resolve after tick completes
+      }, 0));
+    }
+
+    // Verify backoff happened: after 13+ empties, interval should reach 15000 (±jitter)
+    // Jitter is ±700ms, so delays should be in range [14300, 15700]
+    assert.ok(intervals.length > 12, `Expected at least 13 intervals, got ${intervals.length}: [${intervals.join(', ')}]`);
+    const backedOffDelays = intervals.filter(d => d >= 14300 && d <= 15700);
+    assert.ok(backedOffDelays.length > 0, `Expected at least one delay between 14300-15700 in [${intervals.join(', ')}]`);
+
+    stop();
+    RegLog.mail.adapters = originalAdapters;
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
+});
