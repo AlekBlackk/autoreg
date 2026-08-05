@@ -101,35 +101,33 @@
     const all = await local.get(null);
     const version = all.schemaVersion;
 
-    if (version === undefined) {
-      if (Object.keys(all).length === 0) {
-        await local.set({ schemaVersion: CURRENT_SCHEMA, settings: defaultSettings(), entries: [], drafts: {}, sessions: {}, rejected: {} });
-        return;
-      }
-      // Версия 1 (v1.1) без явного поля.
-      try {
-        let snapshot = { ...all };
-        for (let v = 2; v <= CURRENT_SCHEMA; v++) snapshot = MIGRATIONS[v](snapshot);
-        snapshot.schemaVersion = CURRENT_SCHEMA;
-        await local.set(snapshot);
-      } catch (e) {
-        // Миграция не удалась — исходные данные (включая entries) в local
-        // остаются нетронутыми, т.к. мы ничего не записали. Только баннер.
-        migrationBanner = { kind: 'migration-failed' };
-      }
+    if (version === undefined && Object.keys(all).length === 0) {
+      await local.set({ schemaVersion: CURRENT_SCHEMA, settings: defaultSettings(), entries: [], drafts: {}, sessions: {}, rejected: {} });
       return;
     }
 
-    if (version > CURRENT_SCHEMA) {
+    if (version !== undefined && version > CURRENT_SCHEMA) {
       migrationBanner = { kind: 'newer' };
-      return; // ничего не трогаем
+      return; // ничего не трогаем, ни одной записи в local.set
     }
 
-    if (version < CURRENT_SCHEMA) {
-      let snapshot = { ...all };
-      for (let v = version + 1; v <= CURRENT_SCHEMA; v++) snapshot = MIGRATIONS[v](snapshot);
-      snapshot.schemaVersion = CURRENT_SCHEMA;
-      await local.set(snapshot);
+    // Единая ветка миграции: version === undefined с непустым хранилищем
+    // считается версией 1 (v1.1), version < CURRENT_SCHEMA — явные более
+    // ранние схемы. Обе раньше жили в раздельных if с разной обработкой
+    // ошибок (try/catch только на первой) — по итогам ревью Task 3 слиты
+    // в один путь, чтобы гарантия "миграция не роняет init() без баннера"
+    // была одинаковой для обеих исходных версий.
+    if (version === undefined || version < CURRENT_SCHEMA) {
+      const fromVersion = version === undefined ? 1 : version;
+      try {
+        let snapshot = { ...all };
+        for (let v = fromVersion + 1; v <= CURRENT_SCHEMA; v++) snapshot = MIGRATIONS[v](snapshot);
+        snapshot.schemaVersion = CURRENT_SCHEMA;
+        await local.set(snapshot);
+      } catch (e) {
+        migrationBanner = { kind: 'migration-failed' };
+        return; // данные не тронуты (local.set не вызван), но quota всё равно стоит проверить ниже
+      }
     }
 
     await checkQuota();

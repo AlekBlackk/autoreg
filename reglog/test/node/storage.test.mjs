@@ -60,6 +60,17 @@ test('init migrates v1 snapshot: string secret -> object secret + needsReauth', 
   assert.equal(entriesVal.length, 1); // entries не потеряны
 });
 
+test('init migrates rejected map merging two hostnames that collapse to the same registrable domain', async () => {
+  const areas = fresh();
+  areas.local.set('rejected', { 'signup.example.com': ['mailtm'], 'www.example.com': ['mailtm', 'maildrop'] });
+  areas.local.set('entries', []);
+  loadStorage();
+  await globalThis.RegLog.store.init();
+  const rejectedVal = (await new Promise(r => globalThis.__mockChrome.storage.local.get('rejected', r)))['rejected'];
+  assert.deepEqual(new Set(rejectedVal['example.com']), new Set(['mailtm', 'maildrop']));
+  assert.equal(Object.keys(rejectedVal).length, 1); // оба старых ключа схлопнулись в один registrableDomain
+});
+
 test('init with schemaVersion newer than current leaves data untouched and sets banner', async () => {
   const areas = fresh();
   areas.local.set('schemaVersion', 99);
