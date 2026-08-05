@@ -62,3 +62,16 @@ test('disableLock restores plaintext entries in storage', async () => {
   assert.ok(Array.isArray(raw.entries));
   assert.equal(raw.entries[0].password, 'plain-again');
 });
+
+test('enableLock on already-encrypted journal throws and does not wipe data', async () => {
+  const store = await freshModules();
+  await store.init();
+  await store.addEntry({ host: 'example.com', username: 'u', password: 'secret-1' });
+  await store.enableLock('password-1');
+  // Second enableLock should throw and not wipe the encrypted data
+  await assert.rejects(() => store.enableLock('password-2'), /уже зашифрован/);
+  // Verify that the original encrypted entry is still recoverable
+  await store.unlock('password-1');
+  const entries = await store.getEntries();
+  assert.equal(entries[0].password, 'secret-1');
+});
