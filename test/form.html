@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>RegLog test fixture</title>
+<style>body{font-family:sans-serif;max-width:640px;margin:20px auto}fieldset{margin-bottom:24px}</style>
+</head>
+<body>
+  <h1>RegLog — тестовая фикстура</h1>
+
+  <fieldset id="block-a">
+    <legend>A — обычная форма</legend>
+    <form onsubmit="window.__submittedA = true; return false;">
+      <label>Имя <input name="fullname" autocomplete="name"></label><br>
+      <label>Email <input type="email" name="email" autocomplete="email"></label><br>
+      <label>Пароль <input type="password" name="password" autocomplete="new-password"></label><br>
+      <label>Повторите пароль <input type="password" name="password2" autocomplete="new-password"></label><br>
+      <button type="submit">Зарегистрироваться</button>
+    </form>
+  </fieldset>
+
+  <fieldset id="block-b">
+    <legend>B — React-подобная (перехват прямого presignment)</legend>
+    <div id="react-root"></div>
+    <script>
+      (function () {
+        const root = document.getElementById('react-root');
+        function makeTrackedInput(name, type) {
+          const input = document.createElement('input');
+          input.type = type; input.name = name; input.autocomplete = type === 'email' ? 'email' : (type === 'password' ? 'new-password' : 'username');
+          const proto = HTMLInputElement.prototype;
+          const nativeDesc = Object.getOwnPropertyDescriptor(proto, 'value');
+          let tracked = '';
+          Object.defineProperty(input, 'value', {
+            get() { return nativeDesc.get.call(input); },
+            set(v) { tracked = v; nativeDesc.set.call(input, v); } // сеттер тот же native, значит React'oподобный tracker обходится корректным способом
+          });
+          input.addEventListener('input', () => { window.__reactSeen = window.__reactSeen || {}; window.__reactSeen[name] = input.value; });
+          return input;
+        }
+        const user = makeTrackedInput('username', 'text');
+        const mail = makeTrackedInput('email', 'email');
+        const pass = makeTrackedInput('password', 'password');
+        for (const el of [user, mail, pass]) { root.appendChild(el); root.appendChild(document.createElement('br')); }
+      })();
+    </script>
+  </fieldset>
+
+  <fieldset id="block-d">
+    <legend>D — открытый Shadow DOM</legend>
+    <div id="shadow-host"></div>
+    <script>
+      const host = document.getElementById('shadow-host');
+      const root = host.attachShadow({ mode: 'open' });
+      root.innerHTML = `
+        <label>Email <input type="email" name="email" autocomplete="email"></label><br>
+        <label>Пароль <input type="password" name="password" autocomplete="new-password"></label>
+      `;
+    </script>
+  </fieldset>
+
+  <fieldset id="block-e">
+    <legend>E — password с maxlength=12</legend>
+    <form onsubmit="window.__submittedE = true; return false;">
+      <label>Email <input type="email" name="email" autocomplete="email"></label><br>
+      <label>Пароль (макс 12) <input type="password" name="password" autocomplete="new-password" maxlength="12"></label><br>
+      <button type="submit">Зарегистрироваться</button>
+    </form>
+  </fieldset>
+
+  <fieldset id="block-f">
+    <legend>F — ловушка на Enter/submit</legend>
+    <form onsubmit="window.__submitted = true; return false">
+      <label>Значение <input type="text" name="lonely" autocomplete="username"></label>
+    </form>
+  </fieldset>
+
+  <!-- Блок C (кросс-доменный iframe) добавляется в Task 6 -->
+</body>
+</html>
