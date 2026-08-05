@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>RegLog</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="live" aria-live="polite" class="sr-only"></div>
+
+  <header class="topbar">
+    <span id="host-label" class="mono"></span>
+    <button id="btn-panel" type="button" title="Открыть в панели">Открыть в панели</button>
+  </header>
+
+  <nav id="tabs" role="tablist">
+    <button id="tab-new" type="button" role="tab" aria-selected="true">Новый</button>
+    <button id="tab-inbox" type="button" role="tab" aria-selected="false">Ящик</button>
+    <button id="tab-log" type="button" role="tab" aria-selected="false">Журнал</button>
+    <button id="tab-settings" type="button" role="tab" aria-selected="false">Настройки</button>
+  </nav>
+
+  <main id="panes">
+    <section id="pane-new" data-pane>
+      <div id="notice" role="alert" hidden></div>
+
+      <div id="kit" class="kit">
+        <div class="kit-row">
+          <span class="kit-label">имя</span>
+          <button id="kit-name" type="button" class="kit-value mono"></button>
+        </div>
+        <div class="kit-row">
+          <span class="kit-label">логин</span>
+          <button id="kit-user" type="button" class="kit-value mono"></button>
+        </div>
+        <div class="kit-row">
+          <span class="kit-label">почта</span>
+          <button id="kit-mail" type="button" class="kit-value mono"></button>
+          <span id="kit-provider" class="kit-provider"></span>
+        </div>
+        <div class="kit-row">
+          <span class="kit-label">пароль</span>
+          <button id="kit-pass" type="button" class="kit-value mono"></button>
+        </div>
+      </div>
+
+      <div id="frames-block" hidden></div>
+
+      <div class="actions">
+        <button id="btn-generate" type="button">Сгенерировать</button>
+        <button id="btn-fill" type="button" class="accent">Заполнить форму</button>
+        <button id="btn-rescan" type="button">Проверить поля</button>
+        <button id="btn-other" type="button">Другой домен</button>
+        <button id="btn-save" type="button">Записать в журнал</button>
+      </div>
+    </section>
+
+    <section id="pane-inbox" data-pane hidden>
+      <div id="mail-list"></div>
+      <div id="mail-body" hidden></div>
+      <div id="mail-code" hidden></div>
+    </section>
+
+    <section id="pane-log" data-pane hidden>
+      <input id="log-search" type="search" placeholder="поиск">
+      <div id="log-list"></div>
+      <button id="log-more" type="button" hidden>Показать ещё</button>
+    </section>
+
+    <section id="pane-settings" data-pane hidden></section>
+  </main>
+
+  <div id="toast" hidden></div>
+
+  <script src="lib/generate.js"></script>
+  <script src="lib/crypto.js"></script>
+  <script src="lib/storage.js"></script>
+  <script src="lib/frames.js"></script>
+  <script src="lib/agent.js"></script>
+  <script src="lib/mail.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

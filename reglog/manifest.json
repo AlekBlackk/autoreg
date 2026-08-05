@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "116",
+  "name": "RegLog — журнал регистраций",
+  "version": "1.3.0",
+  "description": "Временная почта с переключением сервисов, генерация данных, заполнение формы и локальный журнал аккаунтов.",
+  "permissions": ["storage", "activeTab", "scripting", "sidePanel"],
+  "optional_permissions": ["webNavigation"],
+  "optional_host_permissions": ["*://*/*"],
+  "host_permissions": [
+    "https://api.mail.tm/*",
+    "https://api.mail.gw/*",
+    "https://dropmail.me/*",
+    "https://api.maildrop.cc/*",
+    "https://api.guerrillamail.com/*"
+  ],
+  "action": { "default_title": "RegLog", "default_popup": "popup.html" },
+  "side_panel": { "default_path": "popup.html" },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+}
