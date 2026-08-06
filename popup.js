@@ -483,6 +483,201 @@
 
   addEventListener('pagehide', () => { if (stopPolling) stopPolling(); if (ttlTimer) clearInterval(ttlTimer); });
 
+  // --- вкладка «Журнал»: поиск, порционный рендер, удаление с отменой, экспорт --------
+
+  let logAllEntries = [];
+  let logFiltered = [];
+  let logRenderedCount = 0;
+  const LOG_PAGE = 100;
+
+  async function initLogTab() {
+    const entries = await RegLog.store.getEntries();
+    if (entries && entries.__locked) {
+      document.getElementById('log-unlock').hidden = false;
+      document.getElementById('log-list').textContent = '';
+      document.getElementById('log-more').hidden = true;
+      return;
+    }
+    document.getElementById('log-unlock').hidden = true;
+    logAllEntries = entries;
+    applyLogFilter(document.getElementById('log-search').value);
+  }
+
+  function applyLogFilter(query) {
+    const q = query.trim().toLowerCase();
+    logFiltered = !q ? logAllEntries : logAllEntries.filter(e =>
+      (e.host || '').toLowerCase().includes(q) || (e.username || '').toLowerCase().includes(q) ||
+      (e.email || '').toLowerCase().includes(q) || (e.note || '').toLowerCase().includes(q)
+    );
+    logRenderedCount = 0;
+    document.getElementById('log-list').textContent = '';
+    renderMoreLogEntries();
+  }
+
+  function renderMoreLogEntries() {
+    const list = document.getElementById('log-list');
+    if (logFiltered.length === 0 && logRenderedCount === 0) {
+      const p = document.createElement('p');
+      p.textContent = 'Пока пусто. Сгенерируй комплект на вкладке «Новый» и заполни им форму.';
+      list.appendChild(p);
+    }
+    const slice = logFiltered.slice(logRenderedCount, logRenderedCount + LOG_PAGE);
+    for (const entry of slice) list.appendChild(renderLogRow(entry));
+    logRenderedCount += slice.length;
+    document.getElementById('log-more').hidden = logRenderedCount >= logFiltered.length;
+  }
+
+  document.getElementById('log-search').addEventListener('input', (e) => applyLogFilter(e.target.value));
+  document.getElementById('log-more').addEventListener('click', renderMoreLogEntries);
+
+  function renderLogRow(entry) {
+    const row = document.createElement('div');
+    row.className = 'log-row';
+    const domain = document.createElement('span'); domain.className = 'mono'; domain.textContent = entry.host;
+    const date = document.createElement('span'); date.className = 'mono'; date.textContent = formatDateDDMMYY(entry.createdAt);
+    const provider = document.createElement('span'); provider.textContent = labelFor(entry.provider);
+
+    const userChip = makeChip('логин', entry.username);
+    const mailChip = makeChip('почта', entry.email);
+    const passChip = makeMaskedPassChip(entry.password);
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button'; delBtn.setAttribute('aria-label', 'Удалить запись');
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => confirmDelete(entry, row));
+
+    row.append(domain, date, provider, userChip, mailChip, passChip, delBtn);
+    return row;
+  }
+
+  function formatDateDDMMYY(ts) {
+    const d = new Date(ts);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)}`;
+  }
+
+  function makeChip(label, value) {
+    const chip = document.createElement('button');
+    chip.type = 'button'; chip.className = 'chip'; chip.textContent = label;
+    chip.addEventListener('click', async () => { await copyText(value || ''); showToast('Скопировано'); });
+    return chip;
+  }
+
+  // Маскированный чип пароля: обычный клик/Enter копирует пароль, Alt+клик/Alt+Enter
+  // раскрывает его текстом на 5 секунд. Один обработчик на событие с веткой по altKey —
+  // чтобы клик с зажатым Alt не запускал одновременно и копирование, и раскрытие.
+  function makeMaskedPassChip(password) {
+    const chip = document.createElement('button');
+    chip.type = 'button'; chip.className = 'chip mono'; chip.textContent = '••••••••';
+    let revealTimer = null;
+    function reveal() {
+      chip.textContent = password;
+      clearTimeout(revealTimer);
+      revealTimer = setTimeout(() => { chip.textContent = '••••••••'; }, 5000);
+    }
+    chip.addEventListener('click', async (e) => {
+      if (e.altKey) { reveal(); return; }
+      await copyText(password || ''); showToast('Скопировано');
+    });
+    chip.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter' && e.altKey) { e.preventDefault(); reveal(); }
+      else if (e.key === 'Enter') { e.preventDefault(); await copyText(password || ''); showToast('Скопировано'); }
+    });
+    return chip;
+  }
+
+  let pendingUndo = null;
+  function confirmDelete(entry, row) {
+    if (!confirm('Удалить запись?')) return;
+    RegLog.store.removeEntry(entry.id);
+    logAllEntries = logAllEntries.filter(e => e.id !== entry.id);
+    logFiltered = logFiltered.filter(e => e.id !== entry.id);
+    row.hidden = true;
+    if (pendingUndo) clearTimeout(pendingUndo.timer);
+    const undoBar = document.createElement('div');
+    undoBar.textContent = 'Запись удалена. ';
+    const undoBtn = document.createElement('button'); undoBtn.type = 'button'; undoBtn.textContent = 'Отменить';
+    undoBtn.addEventListener('click', async () => {
+      await RegLog.store.addEntry(entry);
+      clearTimeout(pendingUndo.timer);
+      undoBar.remove();
+      initLogTab();
+    });
+    undoBar.appendChild(undoBtn);
+    row.after(undoBar);
+    pendingUndo = { timer: setTimeout(() => undoBar.remove(), 5000) };
+  }
+
+  document.getElementById('btn-export-json').addEventListener('click', () => openExportModal('json'));
+  document.getElementById('btn-export-csv').addEventListener('click', () => openExportModal('csv'));
+
+  let pendingExportKind = null;
+  function openExportModal(kind) {
+    pendingExportKind = kind;
+    document.getElementById('export-modal').hidden = false;
+  }
+  document.getElementById('export-cancel').addEventListener('click', () => { document.getElementById('export-modal').hidden = true; });
+  document.getElementById('export-confirm').addEventListener('click', async () => {
+    document.getElementById('export-modal').hidden = true;
+    const entries = await RegLog.store.getEntries();
+    if (pendingExportKind === 'json') downloadJson(entries); else downloadCsv(entries);
+  });
+
+  function todayStamp() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadJson(entries) {
+    const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
+    triggerDownload(blob, `reglog-${todayStamp()}.json`);
+  }
+
+  // Экранирование ячейки CSV: оборачивает в кавычки, удваивает внутренние кавычки и
+  // добавляет ведущий апостроф перед формуло-опасными символами (=+-@ и табуляция/CR),
+  // чтобы Excel/Google Sheets не интерпретировали значение как формулу при открытии файла.
+  function csvEscapeCell(value) {
+    let s = value == null ? '' : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    s = s.replace(/"/g, '""');
+    return `"${s}"`;
+  }
+
+  function downloadCsv(entries) {
+    const headers = ['host', 'url', 'name', 'username', 'email', 'provider', 'password', 'note', 'createdAt'];
+    const lines = [headers.join(',')];
+    for (const e of entries) {
+      const row = headers.map(h => csvEscapeCell(h === 'createdAt' ? formatDateDDMMYY(e.createdAt) : e[h]));
+      lines.push(row.join(','));
+    }
+    const csv = '﻿' + lines.join('\r\n') + '\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    triggerDownload(blob, `reglog-${todayStamp()}.csv`);
+  }
+
+  document.getElementById('log-unlock-btn').addEventListener('click', async () => {
+    const pass = document.getElementById('log-unlock-pass').value;
+    const errEl = document.getElementById('log-unlock-error');
+    errEl.hidden = true;
+    try {
+      await RegLog.store.unlock(pass);
+      document.getElementById('log-unlock-pass').value = '';
+      initLogTab();
+    } catch (e) {
+      errEl.textContent = 'Неверный пароль';
+      errEl.hidden = false;
+    }
+  });
+
   // Патч selectTab (Task 1) — вызывать stopInboxIfNeeded при уходе с вкладки «Ящик»,
   // и initInboxTab() при входе на неё. booted-гейт для 'new' сохранён из фикса Task 10
   // (перенесён сюда из тела исходной selectTab, чтобы initNewTab() не вызывался дважды при boot()).
@@ -494,6 +689,7 @@
     _origSelectTab(name);
     if (name === 'new' && booted) initNewTab();
     if (name === 'inbox') initInboxTab();
+    if (name === 'log') initLogTab();
   };
 
   document.getElementById('btn-panel').addEventListener('click', async () => {

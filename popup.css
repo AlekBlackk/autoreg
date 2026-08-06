@@ -53,4 +53,24 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
   background:var(--ink); color:var(--paper); padding:6px 12px; border-radius:3px; font-size:.85em; }
 #toast[hidden] { display:none; }
 
+#log-search { width:100%; padding:6px 8px; margin-bottom:8px; border:1px solid var(--line);
+  border-radius:3px; background:var(--card); color:var(--ink); }
+
+.log-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:6px 4px;
+  border-bottom:1px solid var(--line); font-size:.85em; }
+.log-row:last-child { border-bottom:none; }
+
+.chip { padding:3px 7px; border:1px solid var(--line); background:var(--card); color:var(--ink);
+  border-radius:12px; cursor:pointer; font-size:.9em; }
+.chip:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+#export-modal { border:1px solid var(--warn); border-radius:3px; background:var(--card);
+  padding:8px; margin-top:8px; }
+#export-modal[hidden] { display:none; }
+
+#log-unlock { border:1px solid var(--line); border-radius:3px; background:var(--card);
+  padding:8px; margin-top:8px; }
+#log-unlock[hidden] { display:none; }
+#log-unlock-error { color:var(--danger); }
+
 @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }

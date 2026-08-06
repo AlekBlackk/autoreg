@@ -71,6 +71,20 @@
       <input id="log-search" type="search" placeholder="поиск">
       <div id="log-list"></div>
       <button id="log-more" type="button" hidden>Показать ещё</button>
+      <div class="actions">
+        <button id="btn-export-json" type="button">Выгрузить JSON</button>
+        <button id="btn-export-csv" type="button">Выгрузить CSV</button>
+      </div>
+      <div id="export-modal" hidden role="alertdialog">
+        <p>В файле пароли открытым текстом. Он не защищён.</p>
+        <button id="export-confirm" type="button">Выгрузить</button>
+        <button id="export-cancel" type="button">Отмена</button>
+      </div>
+      <div id="log-unlock" hidden>
+        <label>Мастер-пароль <input id="log-unlock-pass" type="password"></label>
+        <button id="log-unlock-btn" type="button">Разблокировать</button>
+        <p id="log-unlock-error" role="alert" hidden></p>
+      </div>
     </section>
 
     <section id="pane-settings" data-pane hidden></section>
