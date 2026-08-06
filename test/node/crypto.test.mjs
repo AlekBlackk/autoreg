@@ -63,6 +63,37 @@ test('disableLock restores plaintext entries in storage', async () => {
   assert.equal(raw.entries[0].password, 'plain-again');
 });
 
+test('enableLock encrypts drafts too; no plaintext password in stored draft blob', async () => {
+  const store = await freshModules();
+  await store.init();
+  await store.setDraft('example.com', { name: 'X', username: 'u', password: 'draft-secret-pw' });
+  await store.enableLock('correct horse battery staple');
+  const raw = await new Promise((resolve) => globalThis.__mockChrome.storage.local.get('drafts', resolve));
+  assert.equal(raw.drafts.__encrypted, true);
+  assert.ok(!JSON.stringify(raw.drafts).includes('draft-secret-pw'));
+});
+
+test('disableLock restores plaintext drafts in storage', async () => {
+  const store = await freshModules();
+  await store.init();
+  await store.setDraft('example.com', { name: 'X', username: 'u', password: 'draft-secret-pw2' });
+  await store.enableLock('pw-1234567890');
+  await store.disableLock('pw-1234567890');
+  const raw = await new Promise((resolve) => globalThis.__mockChrome.storage.local.get('drafts', resolve));
+  assert.equal(raw.drafts['example.com'].password, 'draft-secret-pw2');
+});
+
+test('unlock with correct password decrypts drafts via getDraft', async () => {
+  const store = await freshModules();
+  await store.init();
+  await store.setDraft('example.com', { name: 'X', username: 'u', password: 'draft-secret-pw3' });
+  await store.enableLock('hunter2-hunter2');
+  await store.lock();
+  await store.unlock('hunter2-hunter2');
+  const draft = await store.getDraft('example.com');
+  assert.equal(draft.password, 'draft-secret-pw3');
+});
+
 test('enableLock on already-encrypted journal throws and does not wipe data', async () => {
   const store = await freshModules();
   await store.init();

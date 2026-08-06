@@ -218,7 +218,7 @@
       opts: { slowType: settings.slowType, watchMs: 3000 }
     };
     const outcome = await RegLog.frames.runOnBestFrame(tab.id, payload);
-    if (!outcome || outcome.error) {
+    if (!outcome || outcome.error || outcome.result.score === 0) {
       const needsFrames = await RegLog.frames.needsFrameAccess(tab.id);
       document.getElementById('frames-block').hidden = !needsFrames;
       if (needsFrames) renderFramesBlock(tab.id);
@@ -853,9 +853,34 @@
     await chrome.sidePanel.open({ tabId: tab.id });
   });
 
+  function renderSchemaBanner() {
+    const banner = RegLog.store.getMigrationBanner();
+    const el = document.getElementById('schema-banner');
+    el.textContent = '';
+    if (!banner) { el.hidden = true; return; }
+    el.hidden = false;
+
+    if (banner.kind === 'newer' || banner.kind === 'migration-failed') {
+      const msg = banner.kind === 'newer'
+        ? 'Журнал сохранён более новой версией расширения и не может быть прочитан этой версией. Данные не тронуты.'
+        : 'Не удалось обновить формат журнала до текущей версии. Данные не тронуты.';
+      el.appendChild(document.createTextNode(msg + ' '));
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.textContent = 'Выгрузить резервную копию';
+      btn.addEventListener('click', async () => {
+        const entries = await RegLog.store.getEntries();
+        downloadJson(entries);
+      });
+      el.appendChild(btn);
+    } else if (banner.kind === 'quota') {
+      el.appendChild(document.createTextNode('Хранилище почти заполнено (свыше 80% квоты). Освободи место — удали старые записи журнала или выгрузи и очисти его.'));
+    }
+  }
+
   async function boot() {
     document.body.setAttribute('aria-busy', 'true');
     await RegLog.store.init();
+    renderSchemaBanner();
     const state = await RegLog.store.getSessionState();
     // currentDomain должен быть разрешён ДО selectTab(...): если восстанавливаемая
     // вкладка — 'inbox', wrapper selectTab безусловно вызывает initInboxTab(), которому

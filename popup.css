@@ -1,5 +1,5 @@
 :root {
-  --paper:#eef0ec; --card:#f8f9f6; --ink:#1a1d1b; --muted:#6d746e;
+  --paper:#eef0ec; --card:#f8f9f6; --ink:#1a1d1b; --muted:#636a64;
   --line:#d3d7d0; --accent:#1f6b56; --warn:#9c4a1c; --danger:#8d2f2a;
 }
 @media (prefers-color-scheme: dark) {
@@ -48,6 +48,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 
 #notice[role="alert"] { padding:8px; border-radius:3px; margin-bottom:8px; background:var(--card); border:1px solid var(--warn); }
 #notice.danger { border-color:var(--danger); }
+
+#schema-banner[role="alert"] { padding:8px; margin:8px 10px 0; border-radius:3px; background:var(--card); border:1px solid var(--warn); }
+#schema-banner[hidden] { display:none; }
+#schema-banner button { margin-left:6px; }
 
 #toast { position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
   background:var(--ink); color:var(--paper); padding:6px 12px; border-radius:3px; font-size:.85em; }
