@@ -1,0 +1,4 @@
+{ "name": "english-verification",
+  "text": "Your verification code is 630147. This code will expire in 15 minutes.",
+  "html": "<p>Your verification code is <b>630147</b>. This code will expire in 15 minutes.</p>",
+  "expect": { "code": "630147", "link": null } }

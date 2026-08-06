@@ -1,0 +1,4 @@
+{ "name": "link-only",
+  "text": "Подтвердите почту, перейдя по ссылке ниже.",
+  "html": "<p>Подтвердите почту, перейдя по ссылке ниже.</p><p><a href=\"https://example.com/confirm?token=abc123def456\">Подтвердить email</a></p>",
+  "expect": { "code": null, "link": "https://example.com/confirm?token=abc123def456" } }

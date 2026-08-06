@@ -1,0 +1,4 @@
+{ "name": "javascript-link",
+  "text": "Подтвердите аккаунт по кнопке ниже.",
+  "html": "<p>Подтвердите аккаунт по кнопке ниже.</p><p><a href=\"javascript:confirmAccount()\">Подтвердить</a></p><p><a href=\"data:text/html,evil\">Ещё ссылка</a></p>",
+  "expect": { "code": null, "link": null } }

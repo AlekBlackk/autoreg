@@ -1,0 +1,4 @@
+{ "name": "html-strong-code",
+  "text": "",
+  "html": "<html><body><p>Для подтверждения используйте код ниже:</p><h2><strong>719284</strong></h2><p>Код действителен 10 минут.</p></body></html>",
+  "expect": { "code": "719284", "link": null } }
