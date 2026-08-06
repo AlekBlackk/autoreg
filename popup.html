@@ -87,7 +87,52 @@
       </div>
     </section>
 
-    <section id="pane-settings" data-pane hidden></section>
+    <section id="pane-settings" data-pane hidden>
+      <fieldset>
+        <legend>Генерация</legend>
+        <label>Стиль логина
+          <select id="set-loginStyle">
+            <option value="words">слова</option><option value="short">короткий</option><option value="random">случайный</option>
+          </select>
+        </label>
+        <label>Пресет пароля
+          <select id="set-passPreset"><option value="strong">strong</option><option value="safe">safe</option><option value="legacy">legacy</option></select>
+        </label>
+        <label>Длина пароля (strong) <input id="set-passLength" type="range" min="12" max="40"> <span id="set-passLength-val"></span></label>
+        <label><input id="set-symbols" type="checkbox"> спецсимволы</label>
+        <label><input id="set-autoSave" type="checkbox"> автосохранение в журнал</label>
+        <label><input id="set-slowType" type="checkbox"> медленный ввод</label>
+      </fieldset>
+
+      <fieldset id="set-providers-block">
+        <legend>Сервисы почты</legend>
+        <ul id="set-providers-list"></ul>
+        <p id="set-rejected-count"></p>
+        <button id="set-reset-all-rejected" type="button">Сбросить все отказы</button>
+      </fieldset>
+
+      <fieldset id="set-frames-block">
+        <legend>Доступ к фреймам</legend>
+        <ul id="set-origins-list"></ul>
+        <button id="set-revoke-webnav" type="button">Отозвать доступ к списку фреймов</button>
+      </fieldset>
+
+      <fieldset id="set-lock-block">
+        <legend>Защита журнала</legend>
+        <label><input id="set-lockEnabled" type="checkbox"> мастер-пароль</label>
+        <div id="set-lock-form" hidden>
+          <p>Забытый пароль = потерянный журнал. Восстановления нет и не будет.</p>
+          <label>Пароль <input id="set-lock-pass1" type="password"></label>
+          <label>Повтори пароль <input id="set-lock-pass2" type="password"></label>
+          <button id="set-lock-apply" type="button">Применить</button>
+          <p id="set-lock-error" role="alert" hidden></p>
+        </div>
+      </fieldset>
+
+      <button id="set-clear-entries" type="button">Очистить журнал</button>
+
+      <p class="muted">Журнал лежит в chrome.storage.local, без мастер-пароля в открытом виде. Временная почта общедоступна по определению, а у части сервисов инбокс читает любой, кто знает адрес, — поэтому RegLog годится для одноразовых регистраций, а не для чего-то ценного.</p>
+    </section>
   </main>
 
   <div id="toast" hidden></div>
