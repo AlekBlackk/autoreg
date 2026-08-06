@@ -620,6 +620,10 @@
   document.getElementById('export-confirm').addEventListener('click', async () => {
     document.getElementById('export-modal').hidden = true;
     const entries = await RegLog.store.getEntries();
+    if (entries && entries.__locked) {
+      showToast('Разблокируйте журнал перед экспортом');
+      return;
+    }
     if (pendingExportKind === 'json') downloadJson(entries); else downloadCsv(entries);
   });
 
