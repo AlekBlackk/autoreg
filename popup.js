@@ -505,8 +505,12 @@
     document.body.setAttribute('aria-busy', 'true');
     await RegLog.store.init();
     const state = await RegLog.store.getSessionState();
-    selectTab(state.activeTab || 'new');
+    // currentDomain должен быть разрешён ДО selectTab(...): если восстанавливаемая
+    // вкладка — 'inbox', wrapper selectTab безусловно вызывает initInboxTab(), которому
+    // нужен уже установленный currentDomain (иначе getSession(null) вернёт null и
+    // покажет "нет адреса" вместо реального ящика — см. фикс-раунд Task 11).
     await initNewTab();
+    selectTab(state.activeTab || 'new');
     booted = true;
     document.body.removeAttribute('aria-busy');
     // Остальная инициализация вкладок добавляется в Tasks 11-14.
