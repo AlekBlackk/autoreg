@@ -42,7 +42,7 @@ body.panel { min-width:372px; width:100%; }
 .actions button.accent { background:var(--accent); color:var(--paper); border-color:var(--accent); }
 .actions button.warn-outline { border-color:var(--warn); }
 
-button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
   outline:2px solid var(--accent); outline-offset:1px;
 }
 
@@ -72,5 +72,26 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
   padding:8px; margin-top:8px; }
 #log-unlock[hidden] { display:none; }
 #log-unlock-error { color:var(--danger); }
+
+.mail-row { display:flex; gap:6px; align-items:center; width:100%; text-align:left;
+  padding:6px; border-bottom:1px solid var(--line); background:none; border-left:none; border-right:none; border-top:none; color:var(--ink); cursor:pointer; }
+.mail-row:last-child { border-bottom:none; }
+
+.muted { color:var(--muted); font-size:.85em; }
+
+#set-lock-form { border:1px solid var(--line); border-radius:3px; background:var(--card);
+  padding:8px; margin-top:8px; }
+#set-lock-form[hidden] { display:none; }
+
+fieldset { border:1px solid var(--line); border-radius:3px; margin-bottom:10px; }
+legend { font-size:.75em; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); padding:0 4px; }
+
+#set-providers-list, #set-origins-list { list-style:none; padding:0; margin:0; }
+#set-providers-list li, #set-origins-list li { display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--line); }
+#set-providers-list li:last-child, #set-origins-list li:last-child { border-bottom:none; }
+#set-providers-list li.disabled { color:var(--muted); }
+
+label { display:block; margin:6px 0; font-size:.85em; }
+input[type="search"], input[type="password"], input[type="text"] { width:100%; padding:4px 6px; border:1px solid var(--line); border-radius:3px; background:var(--paper); color:var(--ink); }
 
 @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
