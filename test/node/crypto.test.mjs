@@ -94,6 +94,81 @@ test('unlock with correct password decrypts drafts via getDraft', async () => {
   assert.equal(draft.password, 'draft-secret-pw3');
 });
 
+// Regression guard for Finding 2 fix-round-2: an earlier "fix" made enableLock write the
+// encrypted blob BEFORE flipping lockEnabled to true — the reverse of what's safe. If
+// enableLock died between those two writes under that wrong order, lockEnabled would still
+// say false while entries/drafts on disk were already the encrypted-blob shape; getEntries()
+// /listDrafts() at lockEnabled:false take the non-crypto branch and return the blob "as is"
+// (`Array.isArray(blob) ? blob : []` -> blob isn't an array -> silently `[]`), and the next
+// addEntry/setDraft would overwrite the still-encrypted blob with plaintext, destroying the
+// rest irrecoverably. The correct order (settings flipped first, blob written second) is the
+// only one where a mid-operation failure leaves storage in a state getEntries() can still
+// read correctly (entries stay a plain array, lockEnabled just optimistically says true a
+// beat early). This test pins the actual write order via a spy, not just the end state,
+// since the end state alone looks identical for either ordering in the success path.
+test('enableLock writes lockEnabled:true to settings BEFORE writing the encrypted entries/drafts blob', async () => {
+  const store = await freshModules();
+  await store.init();
+  await store.addEntry({ host: 'example.com', username: 'u', password: 'order-secret-pw' });
+
+  const localArea = globalThis.__mockChrome.storage.local;
+  const order = [];
+  const originalSet = localArea.set.bind(localArea);
+  localArea.set = (obj, cb) => {
+    if ('settings' in obj) order.push('settings');
+    if ('entries' in obj || 'drafts' in obj) order.push('data');
+    originalSet(obj, cb);
+  };
+  try {
+    await store.enableLock('order-check-pw-123');
+  } finally {
+    localArea.set = originalSet;
+  }
+
+  const settingsIdx = order.indexOf('settings');
+  const dataIdx = order.indexOf('data');
+  assert.ok(settingsIdx !== -1, 'settings write must have happened');
+  assert.ok(dataIdx !== -1, 'entries/drafts write must have happened');
+  assert.ok(settingsIdx < dataIdx,
+    `settings (lockEnabled:true) must be written before the encrypted blob — got settings at index ${settingsIdx}, data at index ${dataIdx}`);
+
+  // End state must also hold both halves of the invariant simultaneously.
+  const settings = await store.getSettings();
+  assert.equal(settings.lockEnabled, true);
+  const raw = await new Promise((resolve) => localArea.get('entries', resolve));
+  assert.equal(raw.entries.__encrypted, true);
+});
+
+// Mirrors the test above for disableLock, whose safe order is the OPPOSITE (data written
+// before the settings flip to lockEnabled:false) — see that function's comment for why.
+test('disableLock writes plaintext entries/drafts BEFORE flipping lockEnabled to false', async () => {
+  const store = await freshModules();
+  await store.init();
+  await store.addEntry({ host: 'example.com', username: 'u', password: 'order-secret-pw-2' });
+  await store.enableLock('order-check-pw-456');
+
+  const localArea = globalThis.__mockChrome.storage.local;
+  const order = [];
+  const originalSet = localArea.set.bind(localArea);
+  localArea.set = (obj, cb) => {
+    if ('settings' in obj) order.push('settings');
+    if ('entries' in obj || 'drafts' in obj) order.push('data');
+    originalSet(obj, cb);
+  };
+  try {
+    await store.disableLock('order-check-pw-456');
+  } finally {
+    localArea.set = originalSet;
+  }
+
+  const settingsIdx = order.indexOf('settings');
+  const dataIdx = order.indexOf('data');
+  assert.ok(settingsIdx !== -1, 'settings write must have happened');
+  assert.ok(dataIdx !== -1, 'entries/drafts write must have happened');
+  assert.ok(dataIdx < settingsIdx,
+    `plaintext data must be written before settings (lockEnabled:false) — got data at index ${dataIdx}, settings at index ${settingsIdx}`);
+});
+
 test('enableLock on already-encrypted journal throws and does not wipe data', async () => {
   const store = await freshModules();
   await store.init();
