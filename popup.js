@@ -6,14 +6,13 @@
 
   let booted = false;
 
-  function selectTab(name) {
+  let selectTab = function (name) {
     for (const key of Object.keys(panes)) {
       document.querySelector(panes[key]).hidden = key !== name;
       document.querySelector(tabs[key]).setAttribute('aria-selected', String(key === name));
     }
     RegLog.store.setSessionState({ activeTab: name });
-    if (name === 'new' && booted) initNewTab();
-  }
+  };
 
   for (const key of Object.keys(tabs)) {
     document.querySelector(tabs[key]).addEventListener('click', () => selectTab(key));
@@ -328,6 +327,179 @@
     });
     block.appendChild(list); block.appendChild(step2Btn);
   }
+
+  let stopPolling = null;
+  let ttlTimer = null;
+
+  async function initInboxTab() {
+    const session = await RegLog.store.getSession(currentDomain);
+    const addressBtn = document.getElementById('inbox-address');
+    const providerSpan = document.getElementById('inbox-provider');
+    const ttlSpan = document.getElementById('inbox-ttl');
+    const list = document.getElementById('mail-list');
+    list.textContent = '';
+
+    if (!session) {
+      addressBtn.textContent = '';
+      providerSpan.textContent = '';
+      list.textContent = '';
+      const p = document.createElement('p');
+      p.textContent = 'Сначала возьми адрес на вкладке «Новый».';
+      list.appendChild(p);
+      return;
+    }
+
+    addressBtn.textContent = session.address;
+    providerSpan.textContent = labelFor(session.provider);
+    const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
+
+    if (adapter.sessionTtlMs > 0) {
+      const updateTtl = () => {
+        const remain = Math.max(0, session.touchedAt + adapter.sessionTtlMs - Date.now());
+        const mins = Math.floor(remain / 60000), secs = Math.floor((remain % 60000) / 1000);
+        ttlSpan.textContent = `живёт 10 мин без обращений · осталось ${mins}:${String(secs).padStart(2, '0')}`;
+      };
+      updateTtl();
+      ttlTimer = setInterval(updateTtl, 1000);
+    } else {
+      ttlSpan.textContent = '';
+    }
+
+    startInboxPolling(session);
+  }
+
+  function startInboxPolling(session) {
+    if (stopPolling) stopPolling();
+    stopPolling = RegLog.mail.poll(session, (batch) => {
+      if (!batch.ok) {
+        if (batch.error && batch.error.reason === 'expired') {
+          showInboxExpired();
+        }
+        return;
+      }
+      renderMailList(batch.messages);
+    });
+  }
+
+  function showInboxExpired() {
+    const list = document.getElementById('mail-list');
+    list.textContent = '';
+    const p = document.createElement('p');
+    p.textContent = 'ящик DropMail истёк, письма удалены';
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = 'Взять новый адрес';
+    btn.addEventListener('click', () => document.getElementById('btn-generate').click());
+    list.appendChild(p); list.appendChild(btn);
+  }
+
+  function renderMailList(messages) {
+    const list = document.getElementById('mail-list');
+    list.textContent = '';
+    if (messages.length === 0) {
+      const p = document.createElement('p');
+      p.textContent = 'Писем пока нет. Отправь письмо с сайта и нажми «Обновить».';
+      list.appendChild(p);
+      return;
+    }
+    for (const msg of messages) {
+      const row = document.createElement('button');
+      row.type = 'button'; row.className = 'mail-row';
+      const from = document.createElement('span'); from.textContent = msg.from;
+      const subj = document.createElement('span'); subj.textContent = msg.subject;
+      const time = document.createElement('span'); time.className = 'mono'; time.textContent = new Date(msg.date).toLocaleTimeString();
+      const intro = document.createElement('span'); intro.className = 'muted'; intro.textContent = msg.intro;
+      row.append(from, subj, time, intro);
+      row.addEventListener('click', () => openMail(msg.id));
+      list.appendChild(row);
+    }
+  }
+
+  async function openMail(msgId) {
+    const session = await RegLog.store.getSession(currentDomain);
+    const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
+    const full = await adapter.read(session, msgId);
+    const bodyEl = document.getElementById('mail-body');
+    bodyEl.textContent = full.text || (full.html ? stripHtmlToTextClientSide(full.html) : '');
+    bodyEl.hidden = false;
+
+    const extracted = RegLog.mail.extract(full);
+    const codeEl = document.getElementById('mail-code');
+    codeEl.textContent = '';
+    codeEl.hidden = true;
+
+    if (extracted.code) {
+      codeEl.hidden = false;
+      const codeSpan = document.createElement('span'); codeSpan.className = 'mono'; codeSpan.textContent = extracted.code;
+      const copyBtn = document.createElement('button'); copyBtn.type = 'button'; copyBtn.textContent = 'Копировать';
+      copyBtn.addEventListener('click', async () => { await copyText(extracted.code); showToast('Скопировано'); });
+      codeEl.append(codeSpan, copyBtn);
+      if (extracted.confidence === 'low') {
+        const note = document.createElement('span'); note.className = 'muted'; note.textContent = 'возможно, это код';
+        codeEl.appendChild(note);
+      }
+    }
+    if (extracted.link) {
+      const linkRow = document.createElement('div');
+      const host = document.createElement('span'); host.className = 'mono muted';
+      try { host.textContent = new URL(extracted.link).host; } catch (e) { host.textContent = extracted.link; }
+      const openBtn = document.createElement('button'); openBtn.type = 'button'; openBtn.textContent = 'Открыть ссылку';
+      openBtn.addEventListener('click', () => chrome.tabs.create({ url: extracted.link }));
+      linkRow.append(host, openBtn);
+      codeEl.hidden = false;
+      codeEl.appendChild(linkRow);
+    }
+  }
+
+  // HTML письма НИКОГДА не вставляется в DOM попапа (раздел 8.2) — используем DOMParser
+  // на отсоединённом документе только для извлечения текста, не для рендера.
+  function stripHtmlToTextClientSide(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('style, script').forEach(n => n.remove());
+    return doc.body ? doc.body.textContent : '';
+  }
+
+  document.getElementById('inbox-address').addEventListener('click', async () => {
+    const session = await RegLog.store.getSession(currentDomain);
+    if (session) { await copyText(session.address); showToast('Скопировано'); }
+  });
+
+  document.getElementById('btn-refresh-inbox').addEventListener('click', async () => {
+    const session = await RegLog.store.getSession(currentDomain);
+    if (!session) return;
+    const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
+    try {
+      const list = await adapter.list(session);
+      renderMailList(list);
+    } catch (e) {
+      if (e.reason === 'expired') showInboxExpired();
+    }
+  });
+
+  function stopInboxIfNeeded() {
+    if (isPanel) return; // в панели поллинг живёт, пока панель открыта
+    if (stopPolling) { stopPolling(); stopPolling = null; }
+    if (ttlTimer) { clearInterval(ttlTimer); ttlTimer = null; }
+  }
+
+  addEventListener('pagehide', () => { if (stopPolling) stopPolling(); if (ttlTimer) clearInterval(ttlTimer); });
+
+  // Патч selectTab (Task 1) — вызывать stopInboxIfNeeded при уходе с вкладки «Ящик»,
+  // и initInboxTab() при входе на неё. booted-гейт для 'new' сохранён из фикса Task 10
+  // (перенесён сюда из тела исходной selectTab, чтобы initNewTab() не вызывался дважды при boot()).
+  const _origSelectTab = selectTab;
+  selectTab = function (name) {
+    if (document.getElementById('tab-inbox').getAttribute('aria-selected') === 'true' && name !== 'inbox') {
+      stopInboxIfNeeded();
+    }
+    _origSelectTab(name);
+    if (name === 'new' && booted) initNewTab();
+    if (name === 'inbox') initInboxTab();
+  };
+
+  document.getElementById('btn-panel').addEventListener('click', async () => {
+    const tab = await currentTab();
+    await chrome.sidePanel.open({ tabId: tab.id });
+  });
 
   async function boot() {
     document.body.setAttribute('aria-busy', 'true');
