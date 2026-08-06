@@ -47,8 +47,25 @@
     }
     setActionsDisabled(false);
 
+    // Early signal for the locked-but-not-yet-unlocked case (e.g. right after a browser
+    // restart): getDraft() above already silently returned null for this case (Task 16
+    // F2 patch), which is indistinguishable from "no draft yet" on its own. Surfacing it
+    // here up front means the user sees the reason before clicking «Сгенерировать» and
+    // hitting the try/catch notice there. Checked directly against settings/isUnlocked()
+    // rather than RegLog.store.isLocked()'s cache, since that cache is only populated by
+    // enableLock/disableLock within the current session and defaults to "unlocked" — it
+    // would miss exactly this right-after-restart scenario.
+    if (await isJournalLockedNow()) {
+      showNotice('Журнал заблокирован — разблокируй его на вкладке «Журнал», прежде чем генерировать новый комплект.');
+    }
+
     const scanResult = await RegLog.frames.runOnBestFrame(tab.id, { mode: 'scan', data: {}, opts: {} });
     renderScanSummary(scanResult);
+  }
+
+  async function isJournalLockedNow() {
+    const settings = await RegLog.store.getSettings();
+    return !!(settings.lockEnabled && !(RegLog.crypto && RegLog.crypto.isUnlocked && RegLog.crypto.isUnlocked()));
   }
 
   function isRestrictedUrl(url) {
@@ -164,8 +181,19 @@
       url: (await currentTab()).url, name: person.full, username, password, note: currentDraft?.note || '',
       entryId: currentDraft?.entryId || null
     };
+
+    try {
+      await RegLog.store.setDraft(currentDomain, draft);
+    } catch (e) {
+      // Журнал защищён мастер-паролем и ещё не разблокирован в этой сессии (например,
+      // сразу после перезапуска браузера) — setDraft бросает по дизайну (Task 16 F2).
+      // currentDraft НЕ переприсваиваем: он остаётся тем, что реально лежит в storage.
+      showNotice('Журнал заблокирован — разблокируй его на вкладке «Журнал», прежде чем генерировать новый комплект.');
+      renderKit(currentDraft);
+      setActionsDisabled(false);
+      return;
+    }
     currentDraft = draft;
-    await RegLog.store.setDraft(currentDomain, draft);
     renderKit(draft);
 
     const outcome = await RegLog.mail.acquire(currentDomain, { localPart: username });
@@ -868,8 +896,13 @@
       const btn = document.createElement('button');
       btn.type = 'button'; btn.textContent = 'Выгрузить резервную копию';
       btn.addEventListener('click', async () => {
-        const entries = await RegLog.store.getEntries();
-        downloadJson(entries);
+        // Намеренно НЕ RegLog.store.getEntries(): при banner.kind 'newer'/'migration-failed'
+        // текущий код не гарантированно понимает форму данных на диске (или журнал может
+        // быть в __locked-состоянии) — getEntries() рискует отдать пустой/заглушечный
+        // результат вместо реальной резервной копии. getRawSnapshot() читает то же самое,
+        // что init() читает перед миграцией — то, что реально лежит на диске, как есть.
+        const snapshot = await RegLog.store.getRawSnapshot();
+        downloadJson(snapshot);
       });
       el.appendChild(btn);
     } else if (banner.kind === 'quota') {
