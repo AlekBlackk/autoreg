@@ -4,13 +4,15 @@
   const panes = { new: '#pane-new', inbox: '#pane-inbox', log: '#pane-log', settings: '#pane-settings' };
   const tabs = { new: '#tab-new', inbox: '#tab-inbox', log: '#tab-log', settings: '#tab-settings' };
 
+  let booted = false;
+
   function selectTab(name) {
     for (const key of Object.keys(panes)) {
       document.querySelector(panes[key]).hidden = key !== name;
       document.querySelector(tabs[key]).setAttribute('aria-selected', String(key === name));
     }
     RegLog.store.setSessionState({ activeTab: name });
-    if (name === 'new') initNewTab();
+    if (name === 'new' && booted) initNewTab();
   }
 
   for (const key of Object.keys(tabs)) {
@@ -147,7 +149,7 @@
     return { name: 'имя', username: 'логин', email: 'почта', password: 'пароль', confirm: 'подтверждение' }[key] || key;
   }
 
-  document.getElementById('btn-generate').addEventListener('click', async () => {
+  async function generateNew() {
     setActionsDisabled(true);
     document.getElementById('kit-mail').textContent = 'беру адрес…';
     hideNotice();
@@ -182,7 +184,9 @@
     }
     renderKit(draft);
     setActionsDisabled(false);
-  });
+  }
+
+  document.getElementById('btn-generate').addEventListener('click', generateNew);
 
   function showNoticeWithAction(text, actionLabel, onAction) {
     const notice = document.getElementById('notice');
@@ -205,7 +209,7 @@
   }
 
   document.getElementById('btn-fill').addEventListener('click', async () => {
-    if (!currentDraft) document.getElementById('btn-generate').click();
+    if (!currentDraft) await generateNew();
     const tab = await currentTab();
     const session = await RegLog.store.getSession(currentDomain);
     const settings = await RegLog.store.getSettings();
@@ -331,6 +335,7 @@
     const state = await RegLog.store.getSessionState();
     selectTab(state.activeTab || 'new');
     await initNewTab();
+    booted = true;
     document.body.removeAttribute('aria-busy');
     // Остальная инициализация вкладок добавляется в Tasks 11-14.
   }
