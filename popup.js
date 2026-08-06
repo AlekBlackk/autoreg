@@ -826,7 +826,11 @@
 
   document.getElementById('set-clear-entries').addEventListener('click', async () => {
     if (!confirm('Очистить весь журнал? Это необратимо.')) return;
-    await RegLog.store.clearEntries();
+    try {
+      await RegLog.store.clearEntries();
+    } catch (e) {
+      showToast('Журнал заблокирован — сначала разблокируйте его на вкладке «Журнал»');
+    }
   });
 
   // Патч selectTab (Task 1) — вызывать stopInboxIfNeeded при уходе с вкладки «Ящик»,
