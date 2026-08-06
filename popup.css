@@ -35,6 +35,8 @@ body.panel { min-width:372px; width:100%; }
   padding:4px 6px; cursor:pointer; border-radius:3px; font-size:1em; }
 .kit-value:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .kit-provider { font-size:.7em; color:var(--muted); position:absolute; right:8px; top:2px; }
+.kit-presets { gap:6px; }
+.kit-preset-btn { flex:none; }
 
 .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
 .actions button { flex:1 1 auto; padding:6px 8px; border:1px solid var(--line); background:var(--card);
@@ -83,9 +85,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 
 .muted { color:var(--muted); font-size:.85em; }
 
-#set-lock-form { border:1px solid var(--line); border-radius:3px; background:var(--card);
+#set-lock-form, #set-disable-lock-form { border:1px solid var(--line); border-radius:3px; background:var(--card);
   padding:8px; margin-top:8px; }
-#set-lock-form[hidden] { display:none; }
+#set-lock-form[hidden], #set-disable-lock-form[hidden] { display:none; }
+#set-disable-lock-error { color:var(--danger); }
 
 fieldset { border:1px solid var(--line); border-radius:3px; margin-bottom:10px; }
 legend { font-size:.75em; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); padding:0 4px; }

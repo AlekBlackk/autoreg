@@ -44,6 +44,12 @@
           <span class="kit-label">пароль</span>
           <button id="kit-pass" type="button" class="kit-value mono"></button>
         </div>
+        <div class="kit-row kit-presets" role="group" aria-label="пресет пароля">
+          <span class="kit-label">пресет</span>
+          <button type="button" class="chip kit-preset-btn" data-preset="strong">strong</button>
+          <button type="button" class="chip kit-preset-btn" data-preset="safe">safe</button>
+          <button type="button" class="chip kit-preset-btn" data-preset="legacy">legacy</button>
+        </div>
       </div>
 
       <div id="frames-block" hidden></div>
@@ -128,6 +134,13 @@
           <label>Повтори пароль <input id="set-lock-pass2" type="password"></label>
           <button id="set-lock-apply" type="button">Применить</button>
           <p id="set-lock-error" role="alert" hidden></p>
+        </div>
+        <div id="set-disable-lock-form" hidden>
+          <p>Введи текущий мастер-пароль, чтобы отключить защиту.</p>
+          <label>Пароль <input id="set-disable-lock-pass" type="password"></label>
+          <button id="set-disable-lock-apply" type="button">Отключить</button>
+          <button id="set-disable-lock-cancel" type="button">Отмена</button>
+          <p id="set-disable-lock-error" role="alert" hidden></p>
         </div>
       </fieldset>
 

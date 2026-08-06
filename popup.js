@@ -65,6 +65,14 @@
 
   async function isJournalLockedNow() {
     const settings = await RegLog.store.getSettings();
+    // Раньше это "работало" только потому, что getDraft() выше (строка ~40) уже успевал
+    // восстановить ключ сессии как побочный эффект (через crypto.js-патч listDrafts).
+    // Явный вызов здесь убирает эту хрупкую зависимость от порядка вызовов — переставить
+    // эти две строки раньше означало бы ложную вспышку "журнал заблокирован" при каждом
+    // открытии попапа (Finding 4, финальное ревью).
+    if (RegLog.crypto && RegLog.crypto.tryRestoreFromSession && RegLog.crypto.isUnlocked && !RegLog.crypto.isUnlocked()) {
+      await RegLog.crypto.tryRestoreFromSession();
+    }
     return !!(settings.lockEnabled && !(RegLog.crypto && RegLog.crypto.isUnlocked && RegLog.crypto.isUnlocked()));
   }
 
@@ -227,6 +235,11 @@
   }
 
   async function regeneratePasswordOnly(preset) {
+    // Без комплекта на карточке спред `{...currentDraft, password}` дал бы черновик без
+    // name/username/url — соберём обычный комплект в этом случае так же, как это уже
+    // делает btn-fill (см. Finding 1 выше), и не продолжаем, если журнал заблокирован.
+    if (!currentDraft) await generateNew();
+    if (!currentDraft) return;
     await RegLog.store.setSettings({ passPreset: preset });
     const settings = await RegLog.store.getSettings();
     const password = preset === 'strong' ? RegLog.gen.password(settings.passLength, settings.symbols) : RegLog.gen.passwordForPolicy(preset);
@@ -235,8 +248,16 @@
     renderKit(currentDraft);
   }
 
+  for (const btn of document.querySelectorAll('.kit-preset-btn')) {
+    btn.addEventListener('click', () => regeneratePasswordOnly(btn.dataset.preset));
+  }
+
   document.getElementById('btn-fill').addEventListener('click', async () => {
     if (!currentDraft) await generateNew();
+    // generateNew()'s own catch (Task 16 F2) deliberately leaves currentDraft null when
+    // the journal is locked-but-not-yet-unlocked this session, and already shows a notice
+    // explaining why — bail here rather than dereferencing currentDraft.name below.
+    if (!currentDraft) return;
     const tab = await currentTab();
     const session = await RegLog.store.getSession(currentDomain);
     const settings = await RegLog.store.getSettings();
@@ -834,23 +855,58 @@
       errEl.hidden = false;
       return;
     }
-    await RegLog.store.enableLock(p1);
+    try {
+      await RegLog.store.enableLock(p1);
+    } catch (e) {
+      // Достижимо, когда журнал уже зашифрован (например, попытка включить защиту
+      // заново после неудачного disableLockFlow) — enableLock бросает по дизайну и
+      // не трогает данные; без этого catch получался необработанный reject и форма
+      // молча зависала без обратной связи.
+      errEl.textContent = 'Не удалось включить защиту: ' + (e && e.message ? e.message : 'неизвестная ошибка');
+      errEl.hidden = false;
+      return;
+    }
     document.getElementById('set-lock-pass1').value = '';
     document.getElementById('set-lock-pass2').value = '';
     document.getElementById('set-lock-form').hidden = true;
   });
 
-  async function disableLockFlow() {
-    const pass = prompt('Введи текущий мастер-пароль для отключения защиты:');
-    if (pass == null) { document.getElementById('set-lockEnabled').checked = true; document.getElementById('set-lock-form').hidden = false; return; }
+  // Инлайн-форма отключения защиты вместо prompt()/alert() (Finding 6, финальное ревью):
+  // нативные диалоги в попапе расширения могут не пережить потерю фокуса, не маскируют
+  // ввод предсказуемо и не дают инлайновой обратной связи. Паттерн — как у #log-unlock
+  // (поле пароля + кнопка + role="alert").
+  function disableLockFlow() {
+    document.getElementById('set-disable-lock-pass').value = '';
+    document.getElementById('set-disable-lock-error').hidden = true;
+    document.getElementById('set-disable-lock-form').hidden = false;
+  }
+
+  function cancelDisableLockFlow() {
+    document.getElementById('set-disable-lock-form').hidden = true;
+    document.getElementById('set-disable-lock-pass').value = '';
+    document.getElementById('set-disable-lock-error').hidden = true;
+    // Отражает поведение прежнего prompt()-отказа (pass == null): чекбокс возвращается
+    // в отмеченное состояние, журнал остаётся защищённым.
+    document.getElementById('set-lockEnabled').checked = true;
+  }
+
+  document.getElementById('set-disable-lock-apply').addEventListener('click', async () => {
+    const pass = document.getElementById('set-disable-lock-pass').value;
+    const errEl = document.getElementById('set-disable-lock-error');
+    errEl.hidden = true;
     try {
       await RegLog.store.disableLock(pass);
+      document.getElementById('set-disable-lock-pass').value = '';
+      document.getElementById('set-disable-lock-form').hidden = true;
     } catch (e) {
-      alert('Неверный пароль, защита осталась включена');
-      document.getElementById('set-lockEnabled').checked = true;
-      document.getElementById('set-lock-form').hidden = false;
+      // Неверный пароль остаётся здесь же для повторной попытки — форма никуда не
+      // прыгает, в отличие от прежнего alert()+возврата к форме включения.
+      errEl.textContent = 'Неверный пароль, защита осталась включена';
+      errEl.hidden = false;
     }
-  }
+  });
+
+  document.getElementById('set-disable-lock-cancel').addEventListener('click', cancelDisableLockFlow);
 
   document.getElementById('set-clear-entries').addEventListener('click', async () => {
     if (!confirm('Очистить весь журнал? Это необратимо.')) return;
