@@ -36,10 +36,14 @@ test('passwordForPolicy legacy has exactly one upper and one digit, length 12', 
   assert.equal((p.match(/[2-9]/g) || []).length, 1);
 });
 
-test('username styles produce expected shapes', () => {
-  assert.match(gen.username('words'), /^[a-z]+-[a-z]+-\d{2}$/);
+test('username styles generate only letters and digits', () => {
+  assert.match(gen.username('words'), /^[a-z]+[a-z]+\d{2}$/);
   assert.match(gen.username('short'), /^[a-z]+[A-Z][a-z]+\d{2}$/);
   assert.match(gen.username('random'), /^[a-z2-9]{12}$/);
+
+  for (const style of ['words', 'short', 'random']) {
+    assert.match(gen.username(style), /^[A-Za-z0-9]+$/);
+  }
 });
 
 test('sanitizeLocalPart lowercases, strips disallowed chars, pads short input', () => {
