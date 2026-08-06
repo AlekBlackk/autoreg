@@ -317,11 +317,34 @@
     }
   }
 
-  document.getElementById('btn-other').addEventListener('click', async () => {
+  async function switchToOtherDomain() {
     const session = await RegLog.store.getSession(currentDomain);
-    const outcome = await RegLog.mail.next(currentDomain, session?.provider);
+    const outcome = session
+      ? await RegLog.mail.next(currentDomain, session.provider)
+      : await RegLog.mail.acquire(currentDomain, { localPart: currentDraft?.username || RegLog.gen.username('words') });
     document.getElementById('btn-other').classList.remove('warn-outline');
-    if (!outcome) { hideNotice(); renderKit(currentDraft); return; }
+    if (!outcome) {
+      const diag = await RegLog.mail.acquireDiagnostics(currentDomain);
+      if (diag.allManuallyRejected) {
+        showNoticeWithAction(
+          'Все сервисы для этого сайта отмечены как отклонённые',
+          'Сбросить отказы для ' + currentDomain,
+          async () => {
+            await RegLog.store.clearRejectedFor(currentDomain);
+            hideNotice();
+            await switchToOtherDomain();
+          }
+        );
+      } else {
+        showNoticeWithAction(
+          'Сервисы временно недоступны, попробуй через несколько минут',
+          'Повторить',
+          () => switchToOtherDomain()
+        );
+      }
+      renderKit(currentDraft);
+      return;
+    }
     renderKit(currentDraft);
     const tab = await currentTab();
     const settings = await RegLog.store.getSettings();
@@ -330,7 +353,9 @@
     if (currentDraft.entryId && fillOutcome && fillOutcome.result) {
       await RegLog.store.updateEntry(currentDraft.entryId, { email: outcome.session.address, provider: outcome.provider.id });
     }
-  });
+  }
+
+  document.getElementById('btn-other').addEventListener('click', switchToOtherDomain);
 
   document.getElementById('btn-rescan').addEventListener('click', async () => {
     const tab = await currentTab();
