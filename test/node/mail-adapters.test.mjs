@@ -72,7 +72,53 @@ test('guerrilla passes sid_token as query parameter on check_email, not cookies'
   assert.equal(list[0].from, 'a@b');
 });
 
-test('all five adapters conform to contract 5.1 shape', async () => {
+test('dustmail.create posts to /api/inbox and maps id/email into session', async () => {
+  const RegLog = await freshMail();
+  let capturedUrl = null, capturedOpts = null;
+  globalThis.fetch = async (url, opts) => {
+    capturedUrl = url; capturedOpts = opts;
+    return res(201, { id: 'inbox-1', email: 'foo@dustmail.net', domain: 'dustmail.net', expires_at: '2026-01-01T00:00:00.000Z' });
+  };
+  const dustmail = RegLog.mail.adapters.find(a => a.id === 'dustmail');
+  const session = await dustmail.create();
+  assert.equal(capturedUrl, 'https://dustmail.net/api/inbox');
+  assert.equal(capturedOpts.method, 'POST');
+  assert.equal(session.provider, 'dustmail');
+  assert.equal(session.address, 'foo@dustmail.net');
+  assert.equal(session.secret.inboxId, 'inbox-1');
+});
+
+test('dustmail.list maps emails[] preview fields, dustmail.read fetches full body by id', async () => {
+  const RegLog = await freshMail();
+  globalThis.fetch = async (url) => {
+    if (url === 'https://dustmail.net/api/inbox/inbox-1') {
+      return res(200, { inbox: { id: 'inbox-1' }, emails: [{ id: 'm1', from_address: 'a@b.com', subject: 's', preview: 'hi', received_at: '2026-01-01T00:00:00.000Z' }] });
+    }
+    if (url === 'https://dustmail.net/api/email/m1') {
+      return res(200, { id: 'm1', body_text: 'plain', body_html: '<p>hi</p>' });
+    }
+    throw new Error('unexpected ' + url);
+  };
+  const dustmail = RegLog.mail.adapters.find(a => a.id === 'dustmail');
+  const list = await dustmail.list({ secret: { inboxId: 'inbox-1' } });
+  assert.equal(list[0].from, 'a@b.com');
+  assert.equal(list[0].subject, 's');
+  const body = await dustmail.read({}, 'm1');
+  assert.equal(body.text, 'plain');
+  assert.equal(body.html, '<p>hi</p>');
+});
+
+test('dustmail.list returns MailError(expired) on HTTP 404 (expired/unknown inbox id)', async () => {
+  const RegLog = await freshMail();
+  globalThis.fetch = async () => res(404, { error: 'Inbox not found' });
+  const dustmail = RegLog.mail.adapters.find(a => a.id === 'dustmail');
+  await assert.rejects(
+    () => dustmail.list({ secret: { inboxId: 'gone' } }),
+    (e) => e instanceof RegLog.mail.MailError && e.reason === 'expired'
+  );
+});
+
+test('all six adapters conform to contract 5.1 shape', async () => {
   const RegLog = await freshMail();
   for (const a of RegLog.mail.adapters) {
     for (const field of ['id', 'label', 'canPickLocal', 'publicInbox', 'sessionTtlMs', 'bodyInList', 'localPartOpts', 'disabled']) {
