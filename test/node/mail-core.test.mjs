@@ -207,3 +207,12 @@ test('decodeEntities does not throw on out-of-range numeric entity', async () =>
   assert.doesNotThrow(() => RegLog.mail.decodeEntities('&#x110000;'));
   assert.equal(RegLog.mail.decodeEntities('&#x110000;'), '&#x110000;');
 });
+
+test('decodeEntities does not double-decode and leaves unknown named entities alone', async () => {
+  const RegLog = await freshMail();
+  // '&amp;amp;' -> the leading '&amp;' token decodes to '&', leaving the trailing
+  // literal text 'amp;' untouched (no second decode pass) -> '&amp;'.
+  assert.equal(RegLog.mail.decodeEntities('&amp;amp;'), '&amp;');
+  // '&copy;' is not in the supported named-entity set, so it passes through unchanged.
+  assert.equal(RegLog.mail.decodeEntities('&copy; 2024'), '&copy; 2024');
+});
