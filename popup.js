@@ -108,7 +108,7 @@
           providerLabel.title = 'инбокс читает любой, кто знает адрес';
           providerLabel.style.color = 'var(--warn)';
         }
-        if (adapter && adapter.sessionTtlMs > 0) providerLabel.textContent += ' · живёт 10 мин';
+        if (adapter && adapter.sessionTtlMs > 0) providerLabel.textContent += ` · живёт ${ttlMinutes(adapter)} мин`;
       } else {
         mailBtn.textContent = '—';
         providerLabel.textContent = '';
@@ -119,6 +119,12 @@
   function labelFor(providerId) {
     const a = RegLog.mail.adapters.find(x => x.id === providerId);
     return a ? a.label : providerId;
+  }
+
+  // Подпись TTL считается из adapter.sessionTtlMs, а не пишется цифрой: у dustmail
+  // 30 минут, и раньше все три подписи хардкодили «10 мин» от старого DropMail.
+  function ttlMinutes(adapter) {
+    return Math.round(adapter.sessionTtlMs / 60000);
   }
 
   async function copyText(text) {
@@ -281,17 +287,31 @@
         () => document.getElementById('btn-other').click());
       document.getElementById('btn-other').classList.add('warn-outline');
     } else if (result.truncated.length > 0) {
-      const limit = result.limits.password;
-      showNoticeWithAction(
-        `Поле «пароль» вместило только ${limit} символов. В журнал записан фактический пароль.`,
-        'Сгенерировать под лимит',
-        async () => {
-          currentDraft.password = RegLog.gen.password(limit, true).slice(0, limit);
-          await RegLog.store.setDraft(currentDomain, currentDraft);
-          renderKit(currentDraft);
-          document.getElementById('btn-fill').click();
-        }
-      );
+      // Прежний код срабатывал на ЛЮБОЕ обрезанное поле, но всегда говорил «пароль»
+      // и брал result.limits.password. Если сайт обрезал логин, а у пароля maxLength
+      // нет, limits.password === 0 — получалось «вместило только 0 символов», а кнопка
+      // звала gen.password(0, true) и подставляла пустой пароль.
+      // Теперь: про лимит пароля говорим только когда обрезан именно пароль, и когда
+      // длину реально знаем — из maxLength или из фактически влезшего значения.
+      const actualPass = result.actual && result.actual.password;
+      const passLimit = result.truncated.includes('password')
+        ? (result.limits.password > 0 ? result.limits.password : (actualPass ? actualPass.length : 0))
+        : 0;
+      if (passLimit > 0) {
+        showNoticeWithAction(
+          `Поле «пароль» вместило только ${passLimit} символов. В журнал записан фактический пароль.`,
+          'Сгенерировать под лимит',
+          async () => {
+            currentDraft.password = RegLog.gen.password(passLimit, true); // gen.password уже режет до len
+            await RegLog.store.setDraft(currentDomain, currentDraft);
+            renderKit(currentDraft);
+            document.getElementById('btn-fill').click();
+          }
+        );
+      } else {
+        const names = result.truncated.map(fieldLabel).join(', ');
+        showNotice(`Сайт обрезал поля: ${names}. В журнал записаны фактические значения.`);
+      }
       notice_setKind('warn');
     } else {
       hideNotice();
@@ -443,7 +463,7 @@
       const updateTtl = () => {
         const remain = Math.max(0, session.touchedAt + adapter.sessionTtlMs - Date.now());
         const mins = Math.floor(remain / 60000), secs = Math.floor((remain % 60000) / 1000);
-        ttlSpan.textContent = `живёт 10 мин без обращений · осталось ${mins}:${String(secs).padStart(2, '0')}`;
+        ttlSpan.textContent = `живёт ${ttlMinutes(adapter)} мин без обращений · осталось ${mins}:${String(secs).padStart(2, '0')}`;
       };
       updateTtl();
       ttlTimer = setInterval(updateTtl, 1000);
@@ -451,15 +471,17 @@
       ttlSpan.textContent = '';
     }
 
-    startInboxPolling(session);
+    startInboxPolling(currentDomain, session);
   }
 
-  function startInboxPolling(session) {
+  function startInboxPolling(domain, session) {
     if (stopPolling) stopPolling();
-    stopPolling = RegLog.mail.poll(session, (batch) => {
+    // domain передаётся, чтобы poll продлевал touchedAt и на диске, а не только в
+    // этом объекте session (на него замкнут живой счётчик остатка TTL выше).
+    stopPolling = RegLog.mail.poll(domain, session, (batch) => {
       if (!batch.ok) {
         if (batch.error && batch.error.reason === 'expired') {
-          showInboxExpired();
+          showInboxExpired(session.provider);
         }
         return;
       }
@@ -467,13 +489,15 @@
     });
   }
 
-  function showInboxExpired() {
+  // providerId передаётся, а не хардкодится: раньше в тексте стоял «DropMail»,
+  // хотя истечь может любой сервис с sessionTtlMs > 0, а сам DropMail отключён.
+  function showInboxExpired(providerId) {
     const list = document.getElementById('mail-list');
     list.textContent = '';
     unreadCount = 0;
     updateInboxBadge();
     const p = document.createElement('p');
-    p.textContent = 'ящик DropMail истёк, письма удалены';
+    p.textContent = `ящик ${labelFor(providerId)} истёк, письма удалены`;
     const btn = document.createElement('button');
     btn.type = 'button'; btn.textContent = 'Взять новый адрес';
     btn.addEventListener('click', () => document.getElementById('btn-generate').click());
@@ -607,7 +631,7 @@
       const list = await adapter.list(session);
       renderMailList(list);
     } catch (e) {
-      if (e.reason === 'expired') showInboxExpired();
+      if (e.reason === 'expired') showInboxExpired(session.provider);
     }
   });
 
@@ -873,7 +897,7 @@
       const label = document.createElement('span');
       label.textContent = (adapter ? adapter.label : id) + (adapter && adapter.disabled ? ' (адаптер не реализован)' : '');
       if (adapter && adapter.publicInbox) label.textContent += ' · публичный ящик';
-      if (adapter && adapter.sessionTtlMs > 0) label.textContent += ' · живёт 10 мин';
+      if (adapter && adapter.sessionTtlMs > 0) label.textContent += ` · живёт ${ttlMinutes(adapter)} мин`;
 
       const upBtn = document.createElement('button'); upBtn.type = 'button'; upBtn.setAttribute('aria-label', `Переместить ${id} вверх`); upBtn.textContent = '↑';
       upBtn.disabled = idx === 0;

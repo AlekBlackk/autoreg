@@ -116,3 +116,59 @@ test('addEntry/removeEntry roundtrip without lock', async () => {
   entries = await store.getEntries();
   assert.equal(entries.length, 0);
 });
+
+test('touchSession bumps touchedAt on disk and keeps the rest of the session intact', async () => {
+  const areas = fresh();
+  loadStorage();
+  const store = globalThis.RegLog.store;
+  await store.init();
+  await store.setSession('example.com', { provider: 'mailtm', address: 'a@b.tld', secret: { token: 't' } });
+
+  // Отматываем touchedAt назад: Date.now() внутри одного теста может вернуть ту же
+  // миллисекунду, и «стало больше» было бы недоказуемо.
+  const map = areas.local.get('sessions');
+  map['example.com'].touchedAt = 1000;
+  areas.local.set('sessions', map);
+
+  const touchedAt = await store.touchSession('example.com');
+  assert.ok(touchedAt > 1000);
+  const after = await store.getSession('example.com');
+  assert.equal(after.touchedAt, touchedAt);
+  assert.equal(after.address, 'a@b.tld');
+  assert.equal(after.secret.token, 't'); // остальные поля не потеряны
+});
+
+test('touchSession does not resurrect a cleared session', async () => {
+  fresh();
+  loadStorage();
+  const store = globalThis.RegLog.store;
+  await store.init();
+  await store.setSession('gone.com', { provider: 'mailtm', address: 'a@b.tld' });
+  await store.clearSession('gone.com');
+
+  const res = await store.touchSession('gone.com');
+  assert.equal(res, null);
+  assert.equal(await store.getSession('gone.com'), null);
+  assert.equal(await store.touchSession('never-existed.com'), null);
+});
+
+test('session LRU evicts the least recently touched, not the oldest created', async () => {
+  const areas = fresh();
+  loadStorage();
+  const store = globalThis.RegLog.store;
+  await store.init();
+  for (let i = 0; i < 20; i++) await store.setSession(`s${i}.com`, { provider: 'mailtm', address: `s${i}@b.tld` });
+
+  // s0 создан раньше всех, s19 — позже всех.
+  const map = areas.local.get('sessions');
+  for (let i = 0; i < 20; i++) map[`s${i}.com`].touchedAt = 1000 + i;
+  areas.local.set('sessions', map);
+
+  // s0 активно опрашивается — poll продлевает его touchedAt.
+  await store.touchSession('s0.com');
+  await store.setSession('new.com', { provider: 'mailtm', address: 'new@b.tld' });
+
+  assert.ok(await store.getSession('s0.com'), 's0 продлён, вытеснять его нельзя');
+  assert.equal(await store.getSession('s1.com'), null, 's1 — самый давно не тронутый');
+  assert.ok(await store.getSession('new.com'));
+});

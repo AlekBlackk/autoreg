@@ -31,6 +31,13 @@ function res(status, body, headers = {}) {
   return { ok: status >= 200 && status < 300, status, headers: mockHeaders(headers), json: async () => body };
 }
 
+function localGet(key) {
+  return new Promise(r => globalThis.__mockChrome.storage.local.get(key, (o) => r(o[key])));
+}
+function localSet(obj) {
+  return new Promise(r => globalThis.__mockChrome.storage.local.set(obj, r));
+}
+
 test('MailError carries providerId/reason/status/retryAfter', async () => {
   const RegLog = await freshMail();
   const e = new RegLog.mail.MailError('mailtm', 'rate', { status: 429, retryAfter: 30 });
@@ -143,23 +150,28 @@ test('poll backs off to 15s interval after 13+ consecutive empty list results', 
     RegLog.mail.adapters = [mockAdapter];
 
     const batches = [];
-    const stop = RegLog.mail.poll(session, (batch) => {
+    const stop = RegLog.mail.poll('poll-domain.com', session, (batch) => {
       batches.push(batch);
     });
 
-    // Wait a tick for first async operation to complete and schedule next tick
-    await new Promise(r => realSetTimeout(r, 0));
-
-    // Now manually drive ticks by invoking scheduled callbacks
-    // We need 14+ scheduled ticks (1 initial outside loop + 13+ more) to exceed emptyStreak > 12
-    for (let i = 0; i < 14 && callbacks.length > 0; i++) {
-      const cb = callbacks.shift();
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise(r => realSetTimeout(() => {
-        cb(); // Invoke tick
-        r(); // Resolve after tick completes
-      }, 0));
+    // Каждый tick асинхронный (adapter.list, затем запись touchedAt в storage), поэтому
+    // между вызовом коллбэка и появлением следующего таймера нужно прокрутить очередь
+    // микрозадач. Считать «один макротик = один запланированный таймер» нельзя: число
+    // await внутри tick зависит от реализации, и тест на этом уже ломался.
+    const drain = () => new Promise(r => realSetTimeout(r, 0));
+    async function takeScheduledTick() {
+      for (let attempt = 0; attempt < 100 && callbacks.length === 0; attempt++) await drain();
+      return callbacks.shift() || null;
     }
+
+    // tick #1 запускается внутри poll(); дальше 14 раз дожидаемся таймера и дёргаем его,
+    // чтобы emptyStreak перевалил за 12 и интервал ушёл на 15000.
+    for (let i = 0; i < 14; i++) {
+      const cb = await takeScheduledTick();
+      assert.ok(cb, `tick ${i + 1}: следующий таймер не запланирован, intervals=[${intervals.join(', ')}]`);
+      cb();
+    }
+    await drain();
 
     // Verify backoff happened: after 13+ empties, interval should reach 15000 (±jitter)
     // Jitter is ±700ms, so delays should be in range [14300, 15700]
@@ -172,6 +184,56 @@ test('poll backs off to 15s interval after 13+ consecutive empty list results', 
   } finally {
     globalThis.setTimeout = realSetTimeout;
   }
+});
+
+test('next keeps the working session when no provider is left to switch to', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSettings({ providers: ['mailtm'], providersOff: [] });
+  await RegLog.store.setSession('keep.com', { provider: 'mailtm', address: 'old@example.tld', secret: { token: 'tok_old' } });
+  globalThis.fetch = async (url) => { throw new Error('fetch не должен вызываться: кандидатов нет, ' + url); };
+
+  const outcome = await RegLog.mail.next('keep.com', 'mailtm');
+
+  assert.equal(outcome, null); // переключаться некуда: единственный сервис теперь отклонён
+  const session = await RegLog.store.getSession('keep.com');
+  assert.ok(session, 'старый ящик обязан выжить: письма на него ещё можно прочитать');
+  assert.equal(session.address, 'old@example.tld');
+  assert.equal(session.secret.token, 'tok_old');
+});
+
+test('poll persists touchedAt through store.touchSession', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSession('poll-domain.com', { provider: 'mailtm', address: 'a@example.tld' });
+  const sessions = await localGet('sessions');
+  sessions['poll-domain.com'].touchedAt = 1000;
+  await localSet({ sessions });
+
+  const session = { ...sessions['poll-domain.com'] };
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = () => ({}); // следующий tick не планируем — хватит первого
+
+  let stop;
+  try {
+    const mockAdapter = { ...RegLog.mail.adapters[0], sessionTtlMs: 0, list: async () => [] };
+    const originalAdapters = RegLog.mail.adapters;
+    RegLog.mail.adapters = [mockAdapter];
+    try {
+      stop = RegLog.mail.poll('poll-domain.com', session, () => {});
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await new Promise(r => realSetTimeout(r, 0));
+        if ((await localGet('sessions'))['poll-domain.com'].touchedAt > 1000) break;
+      }
+    } finally {
+      RegLog.mail.adapters = originalAdapters;
+    }
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    if (stop) stop();
+  }
+
+  const persisted = (await localGet('sessions'))['poll-domain.com'].touchedAt;
+  assert.ok(persisted > 1000, `touchedAt не доехал до диска: ${persisted}`);
+  assert.ok(session.touchedAt >= persisted - 5, 'счётчик TTL в попапе замкнут на этот объект');
 });
 
 test('decodeEntities decodes named entities', async () => {
