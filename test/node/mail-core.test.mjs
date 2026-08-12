@@ -236,6 +236,37 @@ test('poll persists touchedAt through store.touchSession', async () => {
   assert.ok(session.touchedAt >= persisted - 5, 'счётчик TTL в попапе замкнут на этот объект');
 });
 
+test('poll с сессией от неизвестного сервиса отдаёт MailError(shape) и останавливается', async () => {
+  const RegLog = await freshMail();
+  const session = { provider: 'nosuchmail', address: 'a@nosuch.tld', secret: {}, createdAt: Date.now(), touchedAt: Date.now() };
+
+  const realSetTimeout = globalThis.setTimeout;
+  const scheduled = [];
+  globalThis.setTimeout = (fn, ms) => { scheduled.push(ms); return {}; };
+
+  const batches = [];
+  let stop;
+  try {
+    stop = RegLog.mail.poll('ghost-domain.com', session, (batch) => { batches.push(batch); });
+    for (let attempt = 0; attempt < 100 && batches.length === 0; attempt++) {
+      await new Promise(r => realSetTimeout(r, 0));
+    }
+    // Ещё несколько прокруток очереди: если tick() падает необработанным reject'ом
+    // (adapter.sessionTtlMs вне try), это видно именно после отдачи батча.
+    for (let i = 0; i < 5; i++) await new Promise(r => realSetTimeout(r, 0));
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    if (stop) stop();
+  }
+
+  assert.equal(batches.length, 1, `ожидался ровно один батч, получено ${batches.length}`);
+  assert.equal(batches[0].ok, false);
+  assert.ok(batches[0].error instanceof RegLog.mail.MailError, 'ошибка обязана быть MailError, а не TypeError');
+  assert.equal(batches[0].error.reason, 'shape');
+  assert.equal(batches[0].error.providerId, 'nosuchmail');
+  assert.deepEqual(scheduled, [], 'следующий tick планировать нечем: адаптера нет, поллинг остановлен');
+});
+
 test('decodeEntities decodes named entities', async () => {
   const RegLog = await freshMail();
   assert.equal(RegLog.mail.decodeEntities('spam fighter&#039;s ally'), "spam fighter's ally");

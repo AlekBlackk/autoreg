@@ -428,8 +428,13 @@
   let seeded = false;
   let unreadCount = 0;
   let inboxKey = null;
+  let inboxFailStreak = 0;
 
   async function initInboxTab() {
+    // Вход на вкладку не всегда идёт через «уход с вкладки» (повторный клик по уже
+    // активному «Ящику», восстановление вкладки на boot) — поэтому старый интервал
+    // гасим здесь же, а не только в stopInboxIfNeeded.
+    if (ttlTimer) { clearInterval(ttlTimer); ttlTimer = null; }
     const session = await RegLog.store.getSession(currentDomain);
     const key = session ? `${currentDomain}|${session.address}` : null;
     if (key !== inboxKey) {
@@ -444,6 +449,7 @@
     const ttlSpan = document.getElementById('inbox-ttl');
     const list = document.getElementById('mail-list');
     list.textContent = '';
+    clearInboxError();
 
     if (!session) {
       addressBtn.textContent = '';
@@ -458,6 +464,16 @@
     addressBtn.textContent = session.address;
     providerSpan.textContent = labelFor(session.provider);
     const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
+
+    // Сессия от сервиса, которого в сборке больше нет (адаптер выпилен, переименован,
+    // сессия приехала из более новой версии). Раньше следующая строка читала
+    // adapter.sessionTtlMs у undefined и вкладка «Ящик» умирала TypeError'ом.
+    if (!adapter) {
+      ttlSpan.textContent = '';
+      if (stopPolling) { stopPolling(); stopPolling = null; }
+      showUnknownProvider(session.provider);
+      return;
+    }
 
     if (adapter.sessionTtlMs > 0) {
       const updateTtl = () => {
@@ -480,13 +496,71 @@
     // этом объекте session (на него замкнут живой счётчик остатка TTL выше).
     stopPolling = RegLog.mail.poll(domain, session, (batch) => {
       if (!batch.ok) {
-        if (batch.error && batch.error.reason === 'expired') {
+        const err = batch.error;
+        if (err && err.reason === 'expired') {
           showInboxExpired(session.provider);
+          return;
         }
+        if (err && err.reason === 'shape' && !RegLog.mail.adapters.find(a => a.id === session.provider)) {
+          showUnknownProvider(session.provider);
+          return;
+        }
+        // Всё остальное (сеть, таймаут, 5xx, rate-limit, мусор в ответе) раньше уходило
+        // в тишину: renderMailList не звался, и человек смотрел на пустую область, не
+        // понимая, письма не идут или расширение сломалось. Писем со экрана не стираем —
+        // поллинг сам продолжит попытки, строка состояния лишь называет причину.
+        showInboxError(err);
         return;
       }
+      clearInboxError();
       renderMailList(batch.messages);
     });
+  }
+
+  // Человеческие названия причин MailError. Незнакомая причина (и вообще не MailError,
+  // например TypeError из адаптера) не должна давать пустую строку — отсюда фолбэк.
+  function inboxErrorText(err) {
+    const reason = err && err.reason;
+    const byReason = {
+      network: 'нет связи с сервисом почты',
+      timeout: 'сервис почты не отвечает',
+      rate: 'сервис просит подождать: слишком часто',
+      auth: 'сервис отклонил доступ к ящику',
+      server: 'сервис почты отвечает ошибкой',
+      shape: 'непонятный ответ сервиса почты'
+    };
+    return byReason[reason] || 'не удалось получить письма';
+  }
+
+  function showInboxError(err) {
+    inboxFailStreak++;
+    const box = document.getElementById('inbox-error');
+    const tail = inboxFailStreak > 1 ? ` · неудач подряд: ${inboxFailStreak}` : '';
+    box.textContent = `${inboxErrorText(err)}${tail} · пробуем снова`;
+    box.hidden = false;
+  }
+
+  function clearInboxError() {
+    inboxFailStreak = 0;
+    const box = document.getElementById('inbox-error');
+    box.textContent = '';
+    box.hidden = true;
+  }
+
+  // Тупик: адрес есть, читать его нечем. Единственный выход — новый ящик, поэтому
+  // кнопка ведёт туда же, куда экран истечения.
+  function showUnknownProvider(providerId) {
+    const list = document.getElementById('mail-list');
+    list.textContent = '';
+    unreadCount = 0;
+    updateInboxBadge();
+    clearInboxError();
+    const p = document.createElement('p');
+    p.textContent = `сессия от неизвестного сервиса (${providerId}) — читать её нечем, возьми новый адрес`;
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = 'Взять новый адрес';
+    btn.addEventListener('click', () => document.getElementById('btn-generate').click());
+    list.appendChild(p); list.appendChild(btn);
   }
 
   // providerId передаётся, а не хардкодится: раньше в тексте стоял «DropMail»,
@@ -496,6 +570,7 @@
     list.textContent = '';
     unreadCount = 0;
     updateInboxBadge();
+    clearInboxError(); // у истечения свой экран с выходом: строка «пробуем снова» тут врёт
     const p = document.createElement('p');
     p.textContent = `ящик ${labelFor(providerId)} истёк, письма удалены`;
     const btn = document.createElement('button');
@@ -575,8 +650,21 @@
 
   async function openMail(msgId) {
     const session = await RegLog.store.getSession(currentDomain);
+    if (!session) return;
     const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
-    const full = await adapter.read(session, msgId);
+    if (!adapter) { showUnknownProvider(session.provider); return; }
+    let full;
+    try {
+      full = await adapter.read(session, msgId);
+    } catch (e) {
+      // Раньше отсюда уходил необработанный reject: сеть отвалилась или ящик истёк —
+      // письмо просто не открывалось, без единого слова пользователю. Ветка 'expired'
+      // повторяет обработчик «Обновить» (btn-refresh-inbox), остальное — тост, а не
+      // #notice: #notice лежит в pane-new и на вкладке «Ящик» его не видно.
+      if (e && e.reason === 'expired') showInboxExpired(session.provider);
+      else showToast('Не удалось открыть письмо');
+      return;
+    }
     const bodyEl = document.getElementById('mail-body');
     bodyEl.textContent = RegLog.mail.decodeEntities(full.text) || (full.html ? stripHtmlToTextClientSide(full.html) : '');
     bodyEl.hidden = false;
@@ -599,15 +687,37 @@
       }
     }
     if (extracted.link) {
-      const linkRow = document.createElement('div');
-      const host = document.createElement('span'); host.className = 'mono muted';
-      try { host.textContent = new URL(extracted.link).host; } catch (e) { host.textContent = extracted.link; }
-      const openBtn = document.createElement('button'); openBtn.type = 'button'; openBtn.textContent = 'Открыть ссылку';
-      openBtn.addEventListener('click', () => chrome.tabs.create({ url: extracted.link }));
-      linkRow.append(host, openBtn);
-      codeEl.hidden = false;
-      codeEl.appendChild(linkRow);
+      // Показывать один хост нельзя: путь и query письмо контролирует целиком, и
+      // `example.com` ничего не говорит про `/redirect?to=evil`. Кликабелен сам URL —
+      // открывается ровно то, что человек прочитал; обрезает адрес CSS (ellipsis
+      // с конца, хост остаётся виден), полный текст в title и выделяется мышью.
+      const url = safeExternalUrl(extracted.link);
+      if (url) {
+        const linkRow = document.createElement('div');
+        linkRow.className = 'mail-link-row';
+        const label = document.createElement('span'); label.className = 'muted'; label.textContent = 'Ссылка из письма:';
+        const openBtn = document.createElement('button');
+        openBtn.type = 'button';
+        openBtn.className = 'mail-link mono';
+        openBtn.textContent = url;
+        openBtn.title = url;
+        openBtn.addEventListener('click', () => chrome.tabs.create({ url }));
+        linkRow.append(label, openBtn);
+        codeEl.hidden = false;
+        codeEl.appendChild(linkRow);
+      }
     }
+  }
+
+  // Второй барьер перед chrome.tabs.create. extract уже отдаёт только абсолютный
+  // http(s)-URL, но popup — та точка, где адрес из письма покидает расширение, и
+  // держать её зависимой от одной проверки в другом файле незачем: непригодный адрес
+  // здесь не рендерится вовсе, вместо падения tabs.create на клике.
+  function safeExternalUrl(raw) {
+    let url;
+    try { url = new URL(String(raw || '')); } catch (e) { return null; }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    return url.href;
   }
 
   // HTML письма НИКОГДА не вставляется в DOM попапа (раздел 8.2) — используем DOMParser
@@ -627,18 +737,26 @@
     const session = await RegLog.store.getSession(currentDomain);
     if (!session) return;
     const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
+    if (!adapter) { showUnknownProvider(session.provider); return; }
     try {
       const list = await adapter.list(session);
+      clearInboxError();
       renderMailList(list);
     } catch (e) {
-      if (e.reason === 'expired') showInboxExpired(session.provider);
+      // Ручное «Обновить» молчать не имеет права тем более: человек нажал и ждёт ответа.
+      if (e && e.reason === 'expired') showInboxExpired(session.provider);
+      else showInboxError(e);
     }
   });
 
   function stopInboxIfNeeded() {
-    if (isPanel) return; // в панели поллинг живёт, пока панель открыта
-    if (stopPolling) { stopPolling(); stopPolling = null; }
+    // ttlTimer гасим ВСЕГДА, включая режим панели: интервал замкнут на конкретный
+    // объект session, и в панели переходы Ящик→Журнал→Ящик раньше плодили по живому
+    // интервалу за переход (каждый со своим устаревшим session). Гейт isPanel касается
+    // только поллинга — он в панели живёт, пока панель открыта.
     if (ttlTimer) { clearInterval(ttlTimer); ttlTimer = null; }
+    if (isPanel) return;
+    if (stopPolling) { stopPolling(); stopPolling = null; }
   }
 
   addEventListener('pagehide', () => { if (stopPolling) stopPolling(); if (ttlTimer) clearInterval(ttlTimer); });
@@ -664,6 +782,11 @@
   }
 
   function applyLogFilter(query) {
+    // Перерисовка стирает #log-list целиком, унося с ним транзиентные плашки, поэтому их
+    // учёт закрывается здесь: иначе таймер отмены тикал бы по осиротевшему узлу, а
+    // await askInline() не дождался бы ответа никогда.
+    closePendingConfirm();
+    dismissPendingUndo();
     const q = query.trim().toLowerCase();
     logFiltered = !q ? logAllEntries : logAllEntries.filter(e =>
       (e.host || '').toLowerCase().includes(q) || (e.username || '').toLowerCase().includes(q) ||
@@ -704,7 +827,9 @@
     const delBtn = document.createElement('button');
     delBtn.type = 'button'; delBtn.setAttribute('aria-label', 'Удалить запись');
     delBtn.textContent = '✕';
-    delBtn.addEventListener('click', () => confirmDelete(entry, row));
+    // Промис намеренно не возвращается наружу: confirmDelete ждёт ответа в инлайн-плашке
+    // и до клика пользователя не завершается. Все отказы store внутри обработаны.
+    delBtn.addEventListener('click', () => { confirmDelete(entry, row); });
 
     row.append(domain, date, provider, userChip, mailChip, passChip, delBtn);
     return row;
@@ -747,25 +872,109 @@
   }
 
   let pendingUndo = null;
-  function confirmDelete(entry, row) {
-    if (!confirm('Удалить запись?')) return;
-    RegLog.store.removeEntry(entry.id);
+  let pendingConfirm = null;
+
+  // Инлайн-подтверждение вместо confirm(). Нативный диалог в попапе расширения может
+  // уехать вместе с самим попапом при потере фокуса: пользователь нажал «ОК», а
+  // результата не увидел — по этой же причине prompt()/alert() в lock-флоу заменены
+  // на #set-disable-lock-form. Плашка встаёт в поток страницы под своей строкой,
+  // поэтому подтверждение всегда видно вместе с тем, что подтверждаешь.
+  //
+  // Одновременно открыта максимум одна плашка: новая просьба закрывает предыдущую,
+  // резолвя её промис как отказ. Иначе в DOM копились бы мёртвые плашки, а их
+  // await'ы висели бы вечно.
+  function askInline(anchor, message, confirmLabel) {
+    closePendingConfirm();
+    return new Promise(resolve => {
+      const bar = document.createElement('div');
+      bar.className = 'confirm-bar';
+      bar.setAttribute('role', 'alert');
+      const text = document.createElement('span');
+      text.textContent = message + ' ';
+      const yes = document.createElement('button');
+      yes.type = 'button'; yes.className = 'danger'; yes.textContent = confirmLabel;
+      const no = document.createElement('button');
+      no.type = 'button'; no.textContent = 'Отмена';
+
+      let done = false;
+      const finish = (answer) => {
+        if (done) return; // защита от второго клика по уже отвеченной плашке
+        done = true;
+        if (pendingConfirm && pendingConfirm.bar === bar) pendingConfirm = null;
+        bar.remove();
+        resolve(answer);
+      };
+      yes.addEventListener('click', () => finish(true));
+      no.addEventListener('click', () => finish(false));
+
+      bar.append(text, yes, no);
+      anchor.after(bar);
+      pendingConfirm = { bar, cancel: () => finish(false) };
+      if (typeof yes.focus === 'function') yes.focus();
+    });
+  }
+
+  function closePendingConfirm() {
+    if (pendingConfirm) pendingConfirm.cancel();
+  }
+
+  // Снимает плашку отмены целиком — и узел, и таймер. Раньше гасился только таймер,
+  // и после двух удалений подряд первая плашка оставалась в DOM навсегда.
+  function dismissPendingUndo() {
+    if (!pendingUndo) return;
+    clearTimeout(pendingUndo.timer);
+    pendingUndo.bar.remove();
+    pendingUndo = null;
+  }
+
+  async function confirmDelete(entry, row) {
+    if (!(await askInline(row, 'Удалить запись?', 'Удалить'))) return;
+    // removeEntry обязателен к await'у ДО правки logAllEntries/logFiltered и скрытия
+    // строки: при залоченном журнале он реджектится, а раньше строка уже исчезала из
+    // DOM и запись — из модели, то есть на экране «удалено», а на диске нет.
+    try {
+      await RegLog.store.removeEntry(entry.id);
+    } catch (e) {
+      showToast('Не удалось удалить запись — журнал заблокирован');
+      return;
+    }
     logAllEntries = logAllEntries.filter(e => e.id !== entry.id);
     logFiltered = logFiltered.filter(e => e.id !== entry.id);
     row.hidden = true;
-    if (pendingUndo) clearTimeout(pendingUndo.timer);
+
+    dismissPendingUndo();
     const undoBar = document.createElement('div');
+    undoBar.className = 'undo-bar';
     undoBar.textContent = 'Запись удалена. ';
-    const undoBtn = document.createElement('button'); undoBtn.type = 'button'; undoBtn.textContent = 'Отменить';
-    undoBtn.addEventListener('click', async () => {
-      await RegLog.store.addEntry(entry);
-      clearTimeout(pendingUndo.timer);
-      undoBar.remove();
-      initLogTab();
-    });
+    const undoBtn = document.createElement('button');
+    undoBtn.type = 'button'; undoBtn.textContent = 'Отменить';
     undoBar.appendChild(undoBtn);
     row.after(undoBar);
-    pendingUndo = { timer: setTimeout(() => undoBar.remove(), 5000) };
+
+    const timer = setTimeout(() => {
+      undoBar.remove();
+      if (pendingUndo && pendingUndo.bar === undoBar) pendingUndo = null;
+    }, 5000);
+    pendingUndo = { bar: undoBar, timer };
+
+    let undone = false;
+    undoBtn.addEventListener('click', async () => {
+      // Своя плашка и свой таймер — из замыкания, а не из pendingUndo: к моменту клика
+      // pendingUndo может описывать уже другое удаление, и чтение оттуда гасило бы
+      // чужой таймер, оставляя чужую плашку висеть навсегда.
+      if (undone) return;
+      undone = true;
+      clearTimeout(timer);
+      if (pendingUndo && pendingUndo.bar === undoBar) pendingUndo = null;
+      undoBar.remove();
+      try {
+        await RegLog.store.addEntry(entry);
+      } catch (e) {
+        showToast('Не удалось восстановить запись — журнал заблокирован');
+        return;
+      }
+      await initLogTab();
+    });
   }
 
   document.getElementById('btn-export-json').addEventListener('click', () => openExportModal('json'));
@@ -1019,13 +1228,26 @@
 
   document.getElementById('set-disable-lock-cancel').addEventListener('click', cancelDisableLockFlow);
 
-  document.getElementById('set-clear-entries').addEventListener('click', async () => {
-    if (!confirm('Очистить весь журнал? Это необратимо.')) return;
+  // Очистка журнала подтверждается инлайн-формой по той же причине, что и отключение
+  // защиты: нативный confirm() в попапе не гарантированно доживает до ответа, а действие
+  // необратимо — «подтвердил и не увидел результата» здесь недопустимо.
+  document.getElementById('set-clear-entries').addEventListener('click', () => {
+    document.getElementById('set-clear-form').hidden = false;
+  });
+
+  document.getElementById('set-clear-cancel').addEventListener('click', () => {
+    document.getElementById('set-clear-form').hidden = true;
+  });
+
+  document.getElementById('set-clear-apply').addEventListener('click', async () => {
+    document.getElementById('set-clear-form').hidden = true;
     try {
       await RegLog.store.clearEntries();
     } catch (e) {
       showToast('Журнал заблокирован — сначала разблокируйте его на вкладке «Журнал»');
+      return;
     }
+    showToast('Журнал очищен');
   });
 
   // Патч selectTab (Task 1) — вызывать stopInboxIfNeeded при уходе с вкладки «Ящик»,

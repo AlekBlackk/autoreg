@@ -1,0 +1,12 @@
+{
+  "name": "reglog",
+  "version": "1.3.0",
+  "private": true,
+  "description": "RegLog browser extension — tooling manifest only (no runtime dependencies); the extension itself is defined by manifest.json.",
+  "scripts": {
+    "test": "node --test \"test/node/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=21"
+  }
+}

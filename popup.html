@@ -70,6 +70,7 @@
         <span id="inbox-ttl"></span>
       </div>
       <button id="btn-refresh-inbox" type="button">Обновить</button>
+      <p id="inbox-error" role="alert" hidden></p>
       <div id="mail-list"></div>
       <div id="mail-body" hidden></div>
       <div id="mail-code" hidden></div>
@@ -145,6 +146,11 @@
       </fieldset>
 
       <button id="set-clear-entries" type="button">Очистить журнал</button>
+      <div id="set-clear-form" hidden>
+        <p>Очистить весь журнал? Это необратимо.</p>
+        <button id="set-clear-apply" type="button" class="danger">Очистить</button>
+        <button id="set-clear-cancel" type="button">Отмена</button>
+      </div>
 
       <p class="muted">Журнал лежит в chrome.storage.local, без мастер-пароля в открытом виде. Временная почта общедоступна по определению, а у части сервисов инбокс читает любой, кто знает адрес, — поэтому RegLog годится для одноразовых регистраций, а не для чего-то ценного.</p>
     </section>
