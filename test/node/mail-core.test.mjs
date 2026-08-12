@@ -173,3 +173,29 @@ test('poll backs off to 15s interval after 13+ consecutive empty list results', 
     globalThis.setTimeout = realSetTimeout;
   }
 });
+
+test('decodeEntities decodes named entities', async () => {
+  const RegLog = await freshMail();
+  assert.equal(RegLog.mail.decodeEntities('spam fighter&#039;s ally'), "spam fighter's ally");
+  assert.equal(RegLog.mail.decodeEntities('Tom &amp; Jerry'), 'Tom & Jerry');
+  assert.equal(RegLog.mail.decodeEntities('&lt;b&gt;bold&lt;/b&gt;'), '<b>bold</b>');
+  assert.equal(RegLog.mail.decodeEntities('&quot;quoted&quot;'), '"quoted"');
+  assert.equal(RegLog.mail.decodeEntities('a&nbsp;b'), 'a b');
+});
+
+test('decodeEntities decodes numeric entities (decimal and hex)', async () => {
+  const RegLog = await freshMail();
+  assert.equal(RegLog.mail.decodeEntities('it&#39;s'), "it's");
+  assert.equal(RegLog.mail.decodeEntities('it&#x27;s'), "it's");
+  const rightQuote = String.fromCharCode(0x2019);
+  assert.equal(RegLog.mail.decodeEntities('&#8217;curly&#8217;'), rightQuote + 'curly' + rightQuote);
+});
+
+test('decodeEntities handles empty/null/plain input', async () => {
+  const RegLog = await freshMail();
+  assert.equal(RegLog.mail.decodeEntities(''), '');
+  assert.equal(RegLog.mail.decodeEntities(null), '');
+  assert.equal(RegLog.mail.decodeEntities(undefined), '');
+  assert.equal(RegLog.mail.decodeEntities('plain text, no entities'), 'plain text, no entities');
+  assert.equal(RegLog.mail.decodeEntities('50% off & free shipping'), '50% off & free shipping');
+});
