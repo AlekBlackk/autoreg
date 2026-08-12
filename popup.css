@@ -79,9 +79,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focu
 #log-unlock[hidden] { display:none; }
 #log-unlock-error { color:var(--danger); }
 
-.mail-row { display:flex; gap:6px; align-items:center; width:100%; text-align:left;
-  padding:6px; border-bottom:1px solid var(--line); background:none; border-left:none; border-right:none; border-top:none; color:var(--ink); cursor:pointer; }
+.mail-row { display:flex; flex-direction:column; gap:2px; width:100%; text-align:left;
+  padding:6px; border-bottom:1px solid var(--line); border-left:3px solid transparent; border-right:none; border-top:none;
+  background:none; color:var(--ink); cursor:pointer; }
 .mail-row:last-child { border-bottom:none; }
+.mail-row.is-new { border-left-color:var(--accent); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+.mail-row-meta { display:flex; justify-content:space-between; gap:6px; font-size:.8em; color:var(--muted); }
+.mail-row-meta .mail-time { font-family:monospace; }
+.mail-row-body { display:flex; flex-direction:column; gap:1px; }
+.mail-row-subject { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mail-row-intro { color:var(--muted); font-size:.85em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.badge { display:inline-block; min-width:1.2em; margin-left:4px; padding:0 4px; border-radius:8px;
+  background:var(--accent); color:#fff; font-size:.7em; text-align:center; line-height:1.5; }
+.badge[hidden] { display:none; }
 
 .muted { color:var(--muted); font-size:.85em; }
 
