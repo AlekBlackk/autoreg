@@ -199,3 +199,11 @@ test('decodeEntities handles empty/null/plain input', async () => {
   assert.equal(RegLog.mail.decodeEntities('plain text, no entities'), 'plain text, no entities');
   assert.equal(RegLog.mail.decodeEntities('50% off & free shipping'), '50% off & free shipping');
 });
+
+test('decodeEntities does not throw on out-of-range numeric entity', async () => {
+  const RegLog = await freshMail();
+  assert.doesNotThrow(() => RegLog.mail.decodeEntities('subject &#99999999; text'));
+  assert.equal(RegLog.mail.decodeEntities('subject &#99999999; text'), 'subject &#99999999; text');
+  assert.doesNotThrow(() => RegLog.mail.decodeEntities('&#x110000;'));
+  assert.equal(RegLog.mail.decodeEntities('&#x110000;'), '&#x110000;');
+});
