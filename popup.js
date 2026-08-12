@@ -495,20 +495,22 @@
       return;
     }
 
-    const incomingIds = new Set(messages.map(m => m.id));
     let newIds = [];
+    let newIdSet = new Set();
     if (!seeded) {
-      knownMailIds = incomingIds;
+      knownMailIds = new Set(messages.map(m => m.id));
       seeded = true;
     } else {
       newIds = messages.filter(m => !knownMailIds.has(m.id)).map(m => m.id);
+      newIdSet = new Set(newIds);
       for (const id of newIds) knownMailIds.add(id);
     }
 
+    const newRows = [];
     for (const msg of messages) {
       const row = document.createElement('button');
       row.type = 'button';
-      row.className = 'mail-row' + (newIds.includes(msg.id) ? ' is-new' : '');
+      row.className = 'mail-row' + (newIdSet.has(msg.id) ? ' is-new' : '');
 
       const meta = document.createElement('div'); meta.className = 'mail-row-meta';
       const from = document.createElement('span'); from.textContent = RegLog.mail.decodeEntities(msg.from);
@@ -523,6 +525,7 @@
       row.append(meta, body);
       row.addEventListener('click', () => openMail(msg.id));
       list.appendChild(row);
+      if (newIdSet.has(msg.id)) newRows.push(row);
     }
 
     if (newIds.length > 0) {
@@ -530,7 +533,7 @@
       updateInboxBadge();
       showToast(newIds.length === 1 ? 'Новое письмо' : `Новых писем: ${newIds.length}`);
       setTimeout(() => {
-        for (const row of list.querySelectorAll('.mail-row.is-new')) row.classList.remove('is-new');
+        for (const row of newRows) row.classList.remove('is-new');
       }, 4000);
     }
   }
