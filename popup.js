@@ -404,8 +404,15 @@
 
   let stopPolling = null;
   let ttlTimer = null;
+  let knownMailIds = null;
+  let seeded = false;
+  let unreadCount = 0;
 
   async function initInboxTab() {
+    knownMailIds = new Set();
+    seeded = false;
+    unreadCount = 0;
+    updateInboxBadge();
     const session = await RegLog.store.getSession(currentDomain);
     const addressBtn = document.getElementById('inbox-address');
     const providerSpan = document.getElementById('inbox-provider');
@@ -466,6 +473,18 @@
     list.appendChild(p); list.appendChild(btn);
   }
 
+  function updateInboxBadge() {
+    const badge = document.getElementById('inbox-badge');
+    if (!badge) return;
+    if (unreadCount > 0) {
+      badge.textContent = String(unreadCount);
+      badge.hidden = false;
+    } else {
+      badge.textContent = '';
+      badge.hidden = true;
+    }
+  }
+
   function renderMailList(messages) {
     const list = document.getElementById('mail-list');
     list.textContent = '';
@@ -475,16 +494,44 @@
       list.appendChild(p);
       return;
     }
+
+    const incomingIds = new Set(messages.map(m => m.id));
+    let newIds = [];
+    if (!seeded) {
+      knownMailIds = incomingIds;
+      seeded = true;
+    } else {
+      newIds = messages.filter(m => !knownMailIds.has(m.id)).map(m => m.id);
+      for (const id of newIds) knownMailIds.add(id);
+    }
+
     for (const msg of messages) {
       const row = document.createElement('button');
-      row.type = 'button'; row.className = 'mail-row';
-      const from = document.createElement('span'); from.textContent = msg.from;
-      const subj = document.createElement('span'); subj.textContent = msg.subject;
-      const time = document.createElement('span'); time.className = 'mono'; time.textContent = new Date(msg.date).toLocaleTimeString();
-      const intro = document.createElement('span'); intro.className = 'muted'; intro.textContent = msg.intro;
-      row.append(from, subj, time, intro);
+      row.type = 'button';
+      row.className = 'mail-row' + (newIds.includes(msg.id) ? ' is-new' : '');
+
+      const meta = document.createElement('div'); meta.className = 'mail-row-meta';
+      const from = document.createElement('span'); from.textContent = RegLog.mail.decodeEntities(msg.from);
+      const time = document.createElement('span'); time.className = 'mail-time'; time.textContent = new Date(msg.date).toLocaleTimeString();
+      meta.append(from, time);
+
+      const body = document.createElement('div'); body.className = 'mail-row-body';
+      const subj = document.createElement('span'); subj.className = 'mail-row-subject'; subj.textContent = RegLog.mail.decodeEntities(msg.subject);
+      const intro = document.createElement('span'); intro.className = 'mail-row-intro'; intro.textContent = RegLog.mail.decodeEntities(msg.intro);
+      body.append(subj, intro);
+
+      row.append(meta, body);
       row.addEventListener('click', () => openMail(msg.id));
       list.appendChild(row);
+    }
+
+    if (newIds.length > 0) {
+      unreadCount += newIds.length;
+      updateInboxBadge();
+      showToast(newIds.length === 1 ? 'Новое письмо' : `Новых писем: ${newIds.length}`);
+      setTimeout(() => {
+        for (const row of list.querySelectorAll('.mail-row.is-new')) row.classList.remove('is-new');
+      }, 4000);
     }
   }
 
@@ -493,8 +540,9 @@
     const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
     const full = await adapter.read(session, msgId);
     const bodyEl = document.getElementById('mail-body');
-    bodyEl.textContent = full.text || (full.html ? stripHtmlToTextClientSide(full.html) : '');
+    bodyEl.textContent = RegLog.mail.decodeEntities(full.text) || (full.html ? stripHtmlToTextClientSide(full.html) : '');
     bodyEl.hidden = false;
+    if (unreadCount > 0) { unreadCount--; updateInboxBadge(); }
 
     const extracted = RegLog.mail.extract(full);
     const codeEl = document.getElementById('mail-code');
