@@ -407,13 +407,18 @@
   let knownMailIds = null;
   let seeded = false;
   let unreadCount = 0;
+  let inboxKey = null;
 
   async function initInboxTab() {
-    knownMailIds = new Set();
-    seeded = false;
-    unreadCount = 0;
-    updateInboxBadge();
     const session = await RegLog.store.getSession(currentDomain);
+    const key = session ? `${currentDomain}|${session.address}` : null;
+    if (key !== inboxKey) {
+      inboxKey = key;
+      knownMailIds = new Set();
+      seeded = false;
+      unreadCount = 0;
+    }
+    updateInboxBadge();
     const addressBtn = document.getElementById('inbox-address');
     const providerSpan = document.getElementById('inbox-provider');
     const ttlSpan = document.getElementById('inbox-ttl');
@@ -465,6 +470,8 @@
   function showInboxExpired() {
     const list = document.getElementById('mail-list');
     list.textContent = '';
+    unreadCount = 0;
+    updateInboxBadge();
     const p = document.createElement('p');
     p.textContent = 'ящик DropMail истёк, письма удалены';
     const btn = document.createElement('button');
@@ -475,25 +482,22 @@
 
   function updateInboxBadge() {
     const badge = document.getElementById('inbox-badge');
+    const tabBtn = document.getElementById('tab-inbox');
     if (!badge) return;
     if (unreadCount > 0) {
       badge.textContent = String(unreadCount);
       badge.hidden = false;
+      if (tabBtn) tabBtn.setAttribute('aria-label', `Ящик, новых писем: ${unreadCount}`);
     } else {
       badge.textContent = '';
       badge.hidden = true;
+      if (tabBtn) tabBtn.removeAttribute('aria-label');
     }
   }
 
   function renderMailList(messages) {
     const list = document.getElementById('mail-list');
     list.textContent = '';
-    if (messages.length === 0) {
-      const p = document.createElement('p');
-      p.textContent = 'Писем пока нет. Отправь письмо с сайта и нажми «Обновить».';
-      list.appendChild(p);
-      return;
-    }
 
     let newIds = [];
     let newIdSet = new Set();
@@ -504,6 +508,13 @@
       newIds = messages.filter(m => !knownMailIds.has(m.id)).map(m => m.id);
       newIdSet = new Set(newIds);
       for (const id of newIds) knownMailIds.add(id);
+    }
+
+    if (messages.length === 0) {
+      const p = document.createElement('p');
+      p.textContent = 'Писем пока нет. Отправь письмо с сайта и нажми «Обновить».';
+      list.appendChild(p);
+      return;
     }
 
     const newRows = [];
