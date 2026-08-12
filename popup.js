@@ -532,6 +532,17 @@
     return byReason[reason] || 'не удалось получить письма';
   }
 
+  // store.unlock/store.disableLock бросают ровно «неверный пароль», когда пароль не
+  // подошёл, и что-то другое, когда сломан сам замок — например параметры KDF в блобе
+  // вне принимаемого диапазона (crypto.js). Раньше popup показывал «Неверный пароль» на
+  // оба случая: человек перебирал верный пароль, не понимая, что дело не в пароле.
+  function isWrongPassword(err) {
+    return /неверный пароль/i.test(String((err && err.message) || ''));
+  }
+  function errText(err) {
+    return String((err && err.message) || 'неизвестная ошибка');
+  }
+
   function showInboxError(err) {
     inboxFailStreak++;
     const box = document.getElementById('inbox-error');
@@ -1046,7 +1057,7 @@
       document.getElementById('log-unlock-pass').value = '';
       initLogTab();
     } catch (e) {
-      errEl.textContent = 'Неверный пароль';
+      errEl.textContent = isWrongPassword(e) ? 'Неверный пароль' : `Не удалось разблокировать: ${errText(e)}`;
       errEl.hidden = false;
     }
   });
@@ -1221,7 +1232,9 @@
     } catch (e) {
       // Неверный пароль остаётся здесь же для повторной попытки — форма никуда не
       // прыгает, в отличие от прежнего alert()+возврата к форме включения.
-      errEl.textContent = 'Неверный пароль, защита осталась включена';
+      errEl.textContent = isWrongPassword(e)
+        ? 'Неверный пароль, защита осталась включена'
+        : `Не удалось отключить защиту: ${errText(e)}`;
       errEl.hidden = false;
     }
   });

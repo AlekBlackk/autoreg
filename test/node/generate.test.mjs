@@ -57,6 +57,50 @@ test('sanitizeLocalPart minEntropyChars appends extra random suffix', () => {
   assert.match(s, /-[a-z2-9]+$/);
 });
 
+// Раньше энтропийный суффикс дописывался ПОСЛЕ обрезки базы до maxLen, а итоговый
+// slice(0, maxLen) срезал именно суффикс. Для publicInbox-провайдеров (Maildrop, 5.x
+// SPEC) имя ящика — единственный секрет, так что усечённый суффикс = публичный ящик
+// с предсказуемым именем из нашего же открытого словаря.
+test('sanitizeLocalPart keeps the full entropy suffix even when the base fills maxLen', () => {
+  for (let i = 0; i < 50; i++) {
+    const s = gen.sanitizeLocalPart('a'.repeat(64), { maxLen: 32, allowDot: false, minEntropyChars: 10 });
+    assert.ok(s.length <= 32, `длина ${s.length} > maxLen 32: ${s}`);
+    const suffix = s.slice(s.lastIndexOf('-') + 1);
+    assert.ok(s.includes('-'), `нет разделителя суффикса: ${s}`);
+    assert.equal(suffix.length, 10, `суффикс усечён до ${suffix.length}: ${s}`);
+    assert.match(suffix, /^[a-z2-9]{10}$/);
+  }
+});
+
+test('sanitizeLocalPart entropy suffix survives a base that is exactly at the reserved boundary', () => {
+  const s = gen.sanitizeLocalPart('b'.repeat(21), { maxLen: 32, allowDot: false, minEntropyChars: 10 });
+  assert.equal(s.length, 32);
+  assert.equal(s.slice(0, 21), 'b'.repeat(21));
+  assert.equal(s[21], '-');
+  assert.match(s.slice(22), /^[a-z2-9]{10}$/);
+});
+
+test('sanitizeLocalPart never emits a doubled separator when truncation lands on one', () => {
+  // baseMax = 22 - 10 - 1 = 11; slice(0, 11) заканчивается на '-'
+  const s = gen.sanitizeLocalPart('abcdefghij-klmnopqrst', { maxLen: 22, allowDot: false, minEntropyChars: 10 });
+  assert.ok(!s.includes('--'), `двойной разделитель: ${s}`);
+  assert.ok(s.length <= 22);
+  assert.match(s, /^[a-z0-9\-_]+$/);
+  assert.equal(s.slice(s.lastIndexOf('-') + 1).length, 10);
+});
+
+test('sanitizeLocalPart throws when maxLen cannot hold minEntropyChars instead of silently truncating it', () => {
+  assert.throws(() => gen.sanitizeLocalPart('amber-harbor', { maxLen: 10, minEntropyChars: 10 }), RangeError);
+  assert.throws(() => gen.sanitizeLocalPart('amber-harbor', { maxLen: 11, minEntropyChars: 10 }), RangeError);
+  // 12 = 1 символ базы + '-' + 10 символов суффикса — минимально допустимо
+  assert.equal(gen.sanitizeLocalPart('amber-harbor', { maxLen: 12, minEntropyChars: 10 }).length, 12);
+});
+
+test('sanitizeLocalPart still truncates to maxLen when minEntropyChars is 0', () => {
+  const s = gen.sanitizeLocalPart('c'.repeat(64), { maxLen: 32, minEntropyChars: 0 });
+  assert.equal(s.length, 32);
+});
+
 test('personName returns full as "First Last"', () => {
   const n = gen.personName();
   assert.equal(n.full, `${n.first} ${n.last}`);

@@ -274,3 +274,64 @@ test('заблокированный журнал при очистке сооб
   assert.match(h.toastText(), /заблокирован/);
   assert.equal(h.el('set-clear-form').hidden, true);
 });
+
+// Разблокировка: «Неверный пароль» — единственный диагноз, который popup ставил на
+// ЛЮБУЮ ошибку unlock. С параметрами KDF внутри блоба (crypto.js) появился второй,
+// принципиально другой случай: блоб описан параметрами, которые мы не принимаем.
+// Человек, которому на это ответили «Неверный пароль», будет перебирать верный
+// пароль вместо того, чтобы понять, что журналу нужно другое вмешательство.
+test('неверный пароль при разблокировке остаётся «Неверный пароль»', async () => {
+  const h = await loadPopup({ entries: [{ ...ENTRY }] });
+  h.store.unlock = async () => { throw new Error('неверный пароль'); };
+
+  await h.clickTab('log');
+  await h.click(h.el('log-unlock-btn'));
+
+  assert.deepEqual(h.unhandled, []);
+  assert.equal(h.el('log-unlock-error').hidden, false);
+  assert.equal(h.el('log-unlock-error').textContent, 'Неверный пароль');
+});
+
+test('техническая ошибка разблокировки не маскируется под неверный пароль', async () => {
+  const h = await loadPopup({ entries: [{ ...ENTRY }] });
+  h.store.unlock = async () => { throw new Error('неподдерживаемые параметры KDF в зашифрованном журнале'); };
+
+  await h.clickTab('log');
+  await h.click(h.el('log-unlock-btn'));
+
+  assert.deepEqual(h.unhandled, []);
+  assert.equal(h.el('log-unlock-error').hidden, false);
+  const text = h.el('log-unlock-error').textContent;
+  assert.match(text, /KDF/, 'настоящая причина обязана дойти до пользователя');
+  assert.doesNotMatch(text, /^Неверный пароль$/);
+});
+
+test('техническая ошибка отключения защиты не маскируется под неверный пароль', async () => {
+  const h = await loadPopup({ entries: [{ ...ENTRY }] });
+  h.store.disableLock = async () => { throw new Error('неподдерживаемые параметры KDF в зашифрованном журнале'); };
+
+  await h.clickTab('settings');
+  h.el('set-lockEnabled').checked = false;
+  await h.el('set-lockEnabled').dispatch('change', { target: h.el('set-lockEnabled') });
+  await h.click(h.el('set-disable-lock-apply'));
+
+  assert.deepEqual(h.unhandled, []);
+  assert.equal(h.el('set-disable-lock-error').hidden, false);
+  const text = h.el('set-disable-lock-error').textContent;
+  assert.match(text, /KDF/);
+  assert.doesNotMatch(text, /^Неверный пароль/);
+});
+
+test('неверный пароль при отключении защиты оставляет защиту включённой', async () => {
+  const h = await loadPopup({ entries: [{ ...ENTRY }] });
+  h.store.disableLock = async () => { throw new Error('неверный пароль'); };
+
+  await h.clickTab('settings');
+  h.el('set-lockEnabled').checked = false;
+  await h.el('set-lockEnabled').dispatch('change', { target: h.el('set-lockEnabled') });
+  await h.click(h.el('set-disable-lock-apply'));
+
+  assert.deepEqual(h.unhandled, []);
+  assert.match(h.el('set-disable-lock-error').textContent, /Неверный пароль/);
+  assert.equal(h.el('set-disable-lock-form').hidden, false, 'форма остаётся для повторной попытки');
+});
