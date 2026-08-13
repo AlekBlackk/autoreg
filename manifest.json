@@ -10,7 +10,6 @@
   "host_permissions": [
     "https://api.mail.tm/*",
     "https://api.mail.gw/*",
-    "https://dropmail.me/*",
     "https://api.maildrop.cc/*",
     "https://api.guerrillamail.com/*",
     "https://dustmail.net/*"

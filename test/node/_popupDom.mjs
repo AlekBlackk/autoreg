@@ -1,14 +1,17 @@
 // test/node/_popupDom.mjs
 //
-// Минимальный фейковый DOM + фейковый RegLog, чтобы popup.js можно было выполнить
+// Минимальный фейковый DOM + фейковый RegLog, чтобы popup-код можно было выполнить
 // в node без браузера и jsdom и проверять его поведение (а не исходник регэкспами,
 // как это делает script-order.test.mjs — тот приём не видит утечек таймеров и
 // необработанных reject'ов).
 //
-// popup.js — IIFE со 'use strict' внутри, поэтому все глобальные имена, которые он
-// читает (document/location/chrome/RegLog/таймеры/confirm/addEventListener), можно
-// подсунуть параметрами new Function. URL/URLSearchParams/Date намеренно НЕ
-// подменяются — берутся настоящие из node.
+// Код попапа живёт в popup/core.js + popup/{new,inbox,log,settings}.js + popup.js —
+// тех же файлах и в том же порядке, что подключает popup.html (см. POPUP_FILES ниже).
+// Каждый файл — IIFE со 'use strict' внутри, поэтому все глобальные имена, которые они
+// читают (document/location/chrome/RegLog/таймеры/confirm/addEventListener), можно
+// подсунуть параметрами одного общего new Function на все файлы разом — точно так же,
+// как в браузере несколько <script> подряд делят один и тот же глобальный объект.
+// URL/URLSearchParams/Date намеренно НЕ подменяются — берутся настоящие из node.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -232,7 +235,12 @@ export async function loadPopup(opts = {}) {
     Blob: class {}
   };
 
-  const src = readFileSync(fileURLToPath(new URL('../../popup.js', import.meta.url)), 'utf8');
+  const POPUP_FILES = [
+    'popup/core.js', 'popup/new.js', 'popup/inbox.js', 'popup/log.js', 'popup/settings.js', 'popup.js'
+  ];
+  const src = POPUP_FILES
+    .map(f => readFileSync(fileURLToPath(new URL(`../../${f}`, import.meta.url)), 'utf8'))
+    .join('\n;\n');
   const names = Object.keys(injected);
   new Function(...names, src)(...names.map(n => injected[n]));
 

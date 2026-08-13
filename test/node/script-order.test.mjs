@@ -93,18 +93,18 @@ test("defense in depth: storage.js's non-destructive RegLog.store merge survives
 });
 
 test('the final "other domain" switch offers a reset instead of silently clearing the address', () => {
-  const popupSource = loadSource('popup.js');
+  const popupSource = loadSource('popup/new.js');
   const match = popupSource.match(
     /async function switchToOtherDomain\(\) \{([\s\S]*?)\n  \}/
   );
   assert.ok(match, 'could not locate the other-domain switch operation');
 
   const handler = match[1];
-  assert.match(handler, /await RegLog\.mail\.acquireDiagnostics\(currentDomain\)/,
+  assert.match(handler, /await RegLog\.mail\.acquireDiagnostics\(P\.state\.currentDomain\)/,
     'the exhausted-provider branch must identify why no address was returned');
   assert.match(handler, /showNoticeWithAction\(/,
     'the exhausted-provider branch must show a recovery action');
-  assert.match(handler, /await RegLog\.store\.clearRejectedFor\(currentDomain\)/,
+  assert.match(handler, /await RegLog\.store\.clearRejectedFor\(P\.state\.currentDomain\)/,
     'the recovery action must clear rejections for this site only');
   assert.match(handler, /await switchToOtherDomain\(\)/,
     'the recovery action must retry only the email switch, preserving the existing kit');

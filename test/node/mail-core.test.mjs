@@ -93,6 +93,63 @@ test('acquireDiagnostics distinguishes all-rejected vs all-cooling', async () =>
   assert.equal(d2.allManuallyRejected, false);
 });
 
+// --- SPEC 5.4 health-check ------------------------------------------------
+// The probe exists so a broken provider costs one cheap request instead of a
+// full create() cycle with an 8s timeout per step. Maildrop is the honest
+// subject here: its create() is offline (it just builds an address string), so
+// any request the acquire loop makes for Maildrop is the probe and nothing else.
+
+test('healthCheck is assigned exactly once', () => {
+  const hits = mailSource.match(/mail\.healthCheck\s*=/g) || [];
+  assert.equal(hits.length, 1,
+    'a second assignment shadows the first one, leaving unreachable code behind');
+});
+
+test('acquire probes health before create and cools a provider that fails the probe', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSettings({ providers: ['maildrop', 'mailgw'], providersOff: [] });
+  globalThis.fetch = async (url) => {
+    if (url === 'https://api.maildrop.cc/graphql') return res(500, {});
+    if (url.endsWith('/domains')) return res(200, [{ domain: 'gw.tld', isActive: true, isPrivate: false }]);
+    if (url.endsWith('/accounts')) return res(201, { id: 'acc_hc' });
+    if (url.endsWith('/token')) return res(200, { token: 'tok_hc' });
+    throw new Error('unexpected url ' + url);
+  };
+  const outcome = await RegLog.mail.acquire('probe.example', { localPart: 'amber-harbor-4711' });
+  assert.equal(outcome.provider.id, 'mailgw',
+    'a provider that fails its probe must not be handed an address');
+  assert.equal(await RegLog.store.isCooling('maildrop'), true);
+});
+
+test('health probe runs once per browser session, not on every acquire', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSettings({ providers: ['maildrop'], providersOff: [] });
+  let pings = 0;
+  globalThis.fetch = async (url) => {
+    if (url === 'https://api.maildrop.cc/graphql') {
+      pings++;
+      return res(200, { data: { ping: 'reglog' } });
+    }
+    throw new Error('unexpected url ' + url);
+  };
+  const first = await RegLog.mail.acquire('one.example', { localPart: 'amber-harbor-4711' });
+  const second = await RegLog.mail.acquire('two.example', { localPart: 'amber-harbor-4712' });
+  assert.equal(first.provider.id, 'maildrop');
+  assert.equal(second.provider.id, 'maildrop');
+  assert.equal(pings, 1, 'the probe result is memoized for the whole browser session');
+});
+
+test('healthCheck reports no-probe providers as healthy without touching the network', async () => {
+  const RegLog = await freshMail();
+  globalThis.fetch = async (url) => { throw new Error('unexpected url ' + url); };
+  // Guerrilla (get_email_address) and DustMail (POST /api/inbox) have no request
+  // cheaper than create() itself — a separate probe would only double the traffic.
+  assert.equal(await RegLog.mail.healthCheck('guerrilla'), true);
+  assert.equal(await RegLog.mail.healthCheck('dustmail'), true);
+  assert.equal(await RegLog.mail.healthCheck('dropmail'), false, 'disabled adapters are never healthy');
+  assert.equal(await RegLog.mail.healthCheck('nope'), false);
+});
+
 test('GraphQL 200 OK with errors body throws MailError(rate) via _checkGraphQLErrors', async () => {
   const RegLog = await freshMail();
   await assert.rejects(
