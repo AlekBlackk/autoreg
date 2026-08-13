@@ -366,3 +366,58 @@ test('decodeEntities does not double-decode and leaves unknown named entities al
   // '&copy;' is not in the supported named-entity set, so it passes through unchanged.
   assert.equal(RegLog.mail.decodeEntities('&copy; 2024'), '&copy; 2024');
 });
+
+test('splitLinkChips возвращает один text-сегмент, если скобочных ссылок нет', async () => {
+  const RegLog = await freshMail();
+  assert.deepEqual(
+    RegLog.mail.splitLinkChips('привет, это обычный текст письма'),
+    [{ type: 'text', value: 'привет, это обычный текст письма' }]
+  );
+});
+
+test('splitLinkChips сворачивает [url]короткий_лейбл в link-сегмент', async () => {
+  const RegLog = await freshMail();
+  const segs = RegLog.mail.splitLinkChips('до [https://a.test/x.png]LinkedIn после');
+  assert.deepEqual(segs, [
+    { type: 'text', value: 'до ' },
+    { type: 'link', url: 'https://a.test/x.png', label: 'LinkedIn' },
+    { type: 'text', value: ' после' }
+  ]);
+});
+
+test('splitLinkChips с мусорным (длинным слитным) лейблом падает на хост, хвост не съедает', async () => {
+  const RegLog = await freshMail();
+  const junk = 'a'.repeat(30); // >20 символов без пробелов — не человеческий лейбл
+  const segs = RegLog.mail.splitLinkChips(`[https://mail.example.com/c/x]${junk} хвост`);
+  assert.equal(segs.length, 2);
+  assert.deepEqual(segs[0], { type: 'link', url: 'https://mail.example.com/c/x', label: 'mail.example.com' });
+  assert.equal(segs[1].type, 'text');
+  assert.equal(segs[1].value, `${junk} хвост`, 'мусорный хвост остаётся текстом, а не пропадает');
+});
+
+test('splitLinkChips: пустой лейбл (сразу перевод строки) тоже падает на хост', async () => {
+  const RegLog = await freshMail();
+  const segs = RegLog.mail.splitLinkChips('[https://icons.test/a.png]\nследующая строка');
+  assert.equal(segs[0].type, 'link');
+  assert.equal(segs[0].label, 'icons.test');
+  assert.equal(segs[1].value, '\nследующая строка');
+});
+
+test('splitLinkChips обрабатывает несколько чипов подряд', async () => {
+  const RegLog = await freshMail();
+  const segs = RegLog.mail.splitLinkChips('[https://a.test/1]Один[https://b.test/2]Два');
+  assert.deepEqual(segs.map(s => s.type), ['link', 'link']);
+  assert.equal(segs[0].label, 'Один');
+  assert.equal(segs[1].label, 'Два');
+});
+
+test('splitLinkChips: скобка без http(s)-схемы не распознаётся как ссылка', async () => {
+  const RegLog = await freshMail();
+  const segs = RegLog.mail.splitLinkChips('текст [javascript:alert(1)]хвост и ещё [/relative]текст');
+  assert.deepEqual(segs, [{ type: 'text', value: 'текст [javascript:alert(1)]хвост и ещё [/relative]текст' }]);
+});
+
+test('splitLinkChips на пустой строке отдаёт пустой список', async () => {
+  const RegLog = await freshMail();
+  assert.deepEqual(RegLog.mail.splitLinkChips(''), []);
+});
