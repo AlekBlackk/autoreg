@@ -91,6 +91,7 @@ Static searches confirmed no legacy token references, imports, external URL asse
 ## Files
 
 - `popup.css`
+- `popup/new.js` (scope-authorized review fix for the runtime legacy token reference)
 - `test/node/popup-accessibility.test.mjs`
 - `.superpowers/sdd/task-2-report.md`
 
@@ -107,4 +108,77 @@ Static searches confirmed no legacy token references, imports, external URL asse
 ## Concerns
 
 - Browser visual verification is outside this automated Task 2 run; Task 7 explicitly owns real Chrome popup/panel, theme, zoom, and keyboard verification.
-- `popup/new.js` contains a pre-existing runtime inline style assignment to `var(--warn)`. The Task 2 brief limits the old-token removal contract to `popup.css` and prohibits JavaScript changes without NEEDS_CONTEXT, so it was intentionally left untouched. Since `--warn` is no longer defined, that optional inline warning color will fall back to inherited text color until a scope-authorized JS task migrates it to `var(--warning)`.
+
+## Fix Review Findings
+
+The controller authorized the minimal Task 2 scope extension to `popup/new.js`. The runtime public-inbox warning now uses `var(--warning)`, and the static legacy-token contract covers `popup.css` plus every `popup/*.js` file. Static contracts now verify exact 372 px popup width, panel width/minimum width, panel-only 480 px breakpoint and 176 px/minmax grid, 44 px control use, 2 px focus outline, and reduced-motion active-transform neutralization.
+
+### RED
+
+Command, run after strengthening the focused tests and before production changes:
+
+```text
+node --test test/node/popup-accessibility.test.mjs
+```
+
+Result:
+
+```text
+tests 9
+pass 7
+fail 2
+duration_ms 69.4247
+```
+
+The layout/reduced-motion contract failed because the active button transform was not neutralized. The legacy-token contract failed on `popup/new.js` because it referenced `var(--warn)`.
+
+### Focused GREEN
+
+Command:
+
+```text
+node --test test/node/popup-accessibility.test.mjs
+```
+
+Result:
+
+```text
+tests 9
+pass 9
+fail 0
+duration_ms 70.6223
+```
+
+### Full GREEN
+
+Command:
+
+```text
+npm test
+```
+
+Result:
+
+```text
+tests 157
+pass 157
+fail 0
+cancelled 0
+skipped 0
+todo 0
+duration_ms 6999.0721
+```
+
+### Hygiene
+
+Command:
+
+```text
+git diff --check
+```
+
+Result: exit 0 with no whitespace errors. Git emitted only informational LF-to-CRLF working-copy warnings. Static searches found no legacy token references in `popup.css` or `popup/*.js`.
+
+### Remaining Concerns
+
+- Browser visual verification remains outside this automated review-fix run; Task 7 owns real Chrome popup/panel, theme, zoom, and keyboard verification.

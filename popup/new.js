@@ -87,7 +87,7 @@
         if (adapter && adapter.publicInbox) {
           providerLabel.textContent += ' · публичный ящик';
           providerLabel.title = 'инбокс читает любой, кто знает адрес';
-          providerLabel.style.color = 'var(--warn)';
+          providerLabel.style.color = 'var(--warning)';
         }
         if (adapter && adapter.sessionTtlMs > 0) providerLabel.textContent += ` · живёт ${P.ttlMinutes(adapter)} мин`;
       } else {

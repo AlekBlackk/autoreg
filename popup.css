@@ -214,4 +214,5 @@ input[type="checkbox"], input[type="range"] { accent-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important;
     animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  button:active:not(:disabled) { transform: none; }
 }

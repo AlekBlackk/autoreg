@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadPopup } from './_popupDom.mjs';
 
@@ -65,11 +65,13 @@ test('Operational Grid CSS defines themes, targets, panel layout, and reduced mo
   const css = source('popup.css');
   assert.match(css, /color-scheme:\s*light dark/);
   assert.match(css, /prefers-color-scheme:\s*dark/);
-  assert.match(css, /@media\s*\(min-width:\s*480px\)/);
+  assert.match(css, /body\s*\{[^}]*width:\s*372px/);
+  assert.match(css, /body\.panel\s*\{[^}]*width:\s*100%[^}]*min-width:\s*372px/);
+  assert.match(css, /@media\s*\(min-width:\s*480px\)\s*\{[\s\S]*body\.panel\s+\.app-shell\s*\{[^}]*grid-template-columns:\s*176px minmax\(0,\s*1fr\)/);
   assert.match(css, /--control:\s*44px/);
-  assert.match(css, /min-height:\s*(?:var\(--control\)|44px)/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.match(css, /body\.panel\s+\.app-shell\s*\{/);
+  assert.match(css, /button[^{}]*\{[^}]*min-height:\s*var\(--control\)/);
+  assert.match(css, /:focus-visible[^{}]*\{[^}]*outline:\s*2px solid var\(--focus\)/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*button:active:not\(:disabled\)\s*\{[^}]*transform:\s*none/);
 });
 
 test('popup CSS does not import external assets', () => {
@@ -77,7 +79,10 @@ test('popup CSS does not import external assets', () => {
   assert.doesNotMatch(css, /@import|url\(\s*["']?https?:/i);
 });
 
-test('popup CSS no longer references legacy visual tokens', () => {
-  const css = source('popup.css');
-  assert.doesNotMatch(css, /var\(--(?:paper|card|ink|muted|line|warn)\)/);
+test('popup CSS and scripts no longer reference legacy visual tokens', () => {
+  const popupDir = fileURLToPath(new URL('../../popup/', import.meta.url));
+  const files = ['popup.css', ...readdirSync(popupDir).filter(name => name.endsWith('.js')).map(name => `popup/${name}`)];
+  for (const file of files) {
+    assert.doesNotMatch(source(file), /var\(--(?:paper|card|ink|muted|line|warn)\)/, file);
+  }
 });
