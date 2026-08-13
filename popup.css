@@ -118,6 +118,23 @@ button.danger { border-color:var(--danger); color:var(--danger); }
   color:var(--ink); text-decoration:underline; cursor:pointer; font-size:.85em;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
+#mail-view[hidden] { display:none; }
+#btn-mail-back { background:none; border:none; color:var(--accent); cursor:pointer;
+  padding:4px 0; font-size:.85em; }
+.mail-meta-subject { font-weight:600; font-size:.95em; margin-top:4px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mail-meta-from { font-size:.8em; color:var(--muted); margin-bottom:8px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+#mail-code { border:1px solid var(--accent); border-radius:3px;
+  background:color-mix(in srgb, var(--accent) 8%, var(--card)); padding:8px; margin-bottom:8px; }
+
+#mail-body { border:1px solid var(--line); border-radius:3px; background:var(--card);
+  padding:8px; max-height:220px; overflow-y:auto; font-size:.95em; line-height:1.5;
+  white-space:pre-wrap; overflow-wrap:anywhere; }
+
+.mail-body-link { margin:0 4px 4px 0; }
+
 #set-lock-form, #set-disable-lock-form { border:1px solid var(--line); border-radius:3px; background:var(--card);
   padding:8px; margin-top:8px; }
 #set-lock-form[hidden], #set-disable-lock-form[hidden] { display:none; }

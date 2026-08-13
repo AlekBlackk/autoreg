@@ -72,8 +72,15 @@
       <button id="btn-refresh-inbox" type="button">Обновить</button>
       <p id="inbox-error" role="alert" hidden></p>
       <div id="mail-list"></div>
-      <div id="mail-body" hidden></div>
-      <div id="mail-code" hidden></div>
+      <div id="mail-view" hidden>
+        <button id="btn-mail-back" type="button">← Назад к списку</button>
+        <div id="mail-meta">
+          <div id="mail-meta-subject" class="mail-meta-subject"></div>
+          <div id="mail-meta-from" class="mail-meta-from"></div>
+        </div>
+        <div id="mail-code" hidden></div>
+        <div id="mail-body" hidden></div>
+      </div>
     </section>
 
     <section id="pane-log" data-pane hidden>
