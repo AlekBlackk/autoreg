@@ -88,12 +88,15 @@
     </section>
 
     <section id="pane-inbox" data-pane role="tabpanel" aria-labelledby="tab-inbox" hidden>
-      <div id="inbox-header">
-        <button id="inbox-address" type="button" class="mono"></button>
-        <span id="inbox-provider"></span>
-        <span id="inbox-ttl"></span>
+      <section class="section-heading" aria-labelledby="inbox-title">
+        <div><p class="eyebrow">Временная почта</p><h1 id="inbox-title">Ящик</h1></div>
+        <button id="btn-refresh-inbox" type="button" class="button button-secondary">Обновить</button>
+      </section>
+      <div id="inbox-header" class="inbox-summary">
+        <button id="inbox-address" type="button" class="copy-value mono" title="Скопировать адрес"></button>
+        <div class="status-line"><span id="inbox-provider"></span><span id="inbox-ttl"></span></div>
+        <span id="inbox-poll-status" class="muted" aria-live="polite">Автообновление включено</span>
       </div>
-      <button id="btn-refresh-inbox" type="button">Обновить</button>
       <p id="inbox-error" role="alert" hidden></p>
       <div id="mail-list"></div>
       <div id="mail-view" hidden>

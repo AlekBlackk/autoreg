@@ -173,12 +173,20 @@ button.danger:hover:not(:disabled) { background: var(--surface-hover); }
 #set-clear-form { border-color: var(--danger); }
 #log-unlock-error, #set-disable-lock-error, #set-lock-error { color: var(--danger); }
 
+.inbox-summary { display: grid; gap: 3px; margin-bottom: var(--space-2); padding: var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); }
+.copy-value { padding: 0; border: 0; background: transparent; color: var(--text); font-size: .95em; text-align: left; }
+.copy-value:hover:not(:disabled) { color: var(--accent); }
+.status-line { display: flex; flex-wrap: wrap; gap: 6px; color: var(--text-muted); font-size: .8em; }
+
 .mail-row { display: flex; flex-direction: column; gap: 2px; width: 100%; min-height: var(--control);
   padding: 6px; border: 0; border-bottom: 1px solid var(--border); border-left: 3px solid transparent;
   background: transparent; color: var(--text); text-align: left; }
 .mail-row:last-child { border-bottom: 0; }
 .mail-row:hover:not(:disabled) { background: var(--surface-hover); }
 .mail-row.is-new { border-left-color: var(--accent); background: var(--surface-hover); }
+.mail-new-label { align-self: flex-start; padding: 1px 6px; border-radius: var(--radius-sm);
+  background: var(--accent); color: var(--accent-text); font-size: .68em; letter-spacing: .04em; text-transform: uppercase; }
 .mail-row-meta { display: flex; justify-content: space-between; gap: 6px; color: var(--text-muted); font-size: .8em; }
 .mail-row-meta .mail-time { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 .mail-row-body { display: flex; flex-direction: column; gap: 1px; }
@@ -201,8 +209,10 @@ button.danger:hover:not(:disabled) { background: var(--surface-hover); }
   text-overflow: ellipsis; white-space: nowrap; }
 .mail-meta-from { margin-bottom: var(--space-2); overflow: hidden; color: var(--text-muted);
   font-size: .8em; text-overflow: ellipsis; white-space: nowrap; }
-#mail-code { margin-bottom: var(--space-2); padding: var(--space-2); border: 1px solid var(--accent);
+.verification-card { margin-bottom: var(--space-2); padding: var(--space-2); border: 1px solid var(--accent);
   border-radius: var(--radius-sm); background: var(--surface-hover); }
+.verification-code { display: flex; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); }
+.verification-code strong { font-size: 1.3em; letter-spacing: .04em; }
 #mail-body { max-height: 220px; padding: var(--space-2); overflow-y: auto; overflow-wrap: anywhere;
   border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-raised);
   font-size: .95em; line-height: 1.5; white-space: pre-wrap; }

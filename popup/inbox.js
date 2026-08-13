@@ -138,6 +138,7 @@
     const tail = inboxFailStreak > 1 ? ` · неудач подряд: ${inboxFailStreak}` : '';
     box.textContent = `${inboxErrorText(err)}${tail} · пробуем снова`;
     box.hidden = false;
+    document.getElementById('inbox-poll-status').textContent = 'Повторяем запрос';
   }
 
   function clearInboxError() {
@@ -145,6 +146,7 @@
     const box = document.getElementById('inbox-error');
     box.textContent = '';
     box.hidden = true;
+    document.getElementById('inbox-poll-status').textContent = 'Автообновление включено';
   }
 
   // Тупик: адрес есть, читать его нечем. Единственный выход — новый ящик, поэтому
@@ -235,6 +237,14 @@
       body.append(subj, intro);
 
       row.append(meta, body);
+      if (newIdSet.has(msg.id)) {
+        // Цветная левая рамка (.is-new) незаметна незрячему пользователю и на плохом
+        // экране — текстовая метка рядом с ней дублирует смысл словами, а не цветом.
+        const newLabel = document.createElement('span');
+        newLabel.className = 'mail-new-label';
+        newLabel.textContent = 'Новое';
+        row.appendChild(newLabel);
+      }
       row.addEventListener('click', () => openMail(msg));
       list.appendChild(row);
       if (newIdSet.has(msg.id)) newRows.push(row);
@@ -309,17 +319,23 @@
     const codeEl = document.getElementById('mail-code');
     codeEl.textContent = '';
     codeEl.hidden = true;
+    codeEl.className = 'verification-card';
 
     if (extracted.code) {
       codeEl.hidden = false;
-      const codeSpan = document.createElement('span'); codeSpan.className = 'mono'; codeSpan.textContent = extracted.code;
-      const copyBtn = document.createElement('button'); copyBtn.type = 'button'; copyBtn.textContent = 'Копировать';
+      const codeGroup = document.createElement('div');
+      codeGroup.className = 'verification-code';
+      const label = document.createElement('span');
+      label.className = 'eyebrow';
+      label.textContent = extracted.confidence === 'low' ? 'Возможный код' : 'Код подтверждения';
+      const codeSpan = document.createElement('strong');
+      codeSpan.className = 'mono';
+      codeSpan.textContent = extracted.code;
+      codeGroup.append(label, codeSpan);
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button'; copyBtn.className = 'button button-secondary'; copyBtn.textContent = 'Копировать';
       copyBtn.addEventListener('click', async () => { await P.copyText(extracted.code); P.showToast('Скопировано'); });
-      codeEl.append(codeSpan, copyBtn);
-      if (extracted.confidence === 'low') {
-        const note = document.createElement('span'); note.className = 'muted'; note.textContent = 'возможно, это код';
-        codeEl.appendChild(note);
-      }
+      codeEl.append(codeGroup, copyBtn);
     }
     if (extracted.link) {
       // Показывать один хост нельзя: путь и query письмо контролирует целиком, и
@@ -369,18 +385,24 @@
   });
 
   document.getElementById('btn-refresh-inbox').addEventListener('click', async () => {
-    const session = await RegLog.store.getSession(P.state.currentDomain);
-    if (!session) return;
-    const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
-    if (!adapter) { showUnknownProvider(session.provider); return; }
+    const button = document.getElementById('btn-refresh-inbox');
+    P.setBusy(button, true, 'Обновляем…');
     try {
-      const list = await adapter.list(session);
-      clearInboxError();
-      renderMailList(list);
-    } catch (e) {
-      // Ручное «Обновить» молчать не имеет права тем более: человек нажал и ждёт ответа.
-      if (e && e.reason === 'expired') showInboxExpired(session.provider);
-      else showInboxError(e);
+      const session = await RegLog.store.getSession(P.state.currentDomain);
+      if (!session) return;
+      const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
+      if (!adapter) { showUnknownProvider(session.provider); return; }
+      try {
+        const list = await adapter.list(session);
+        clearInboxError();
+        renderMailList(list);
+      } catch (e) {
+        // Ручное «Обновить» молчать не имеет права тем более: человек нажал и ждёт ответа.
+        if (e && e.reason === 'expired') showInboxExpired(session.provider);
+        else showInboxError(e);
+      }
+    } finally {
+      P.setBusy(button, false);
     }
   });
 
