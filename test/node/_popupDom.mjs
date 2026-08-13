@@ -25,11 +25,13 @@ const HIDDEN_IN_MARKUP = new Set([
 ]);
 
 class FakeElement {
-  constructor(tagName, id) {
+  constructor(tagName, id, ownerDocument) {
     this.tagName = String(tagName || 'div').toUpperCase();
     this.id = id || '';
     this.children = [];
     this.parentNode = null;
+    this.ownerDocument = ownerDocument || null;
+    this.tabIndex = 0;
     this.hidden = HIDDEN_IN_MARKUP.has(this.id);
     this.className = '';
     this.type = '';
@@ -86,22 +88,24 @@ class FakeElement {
     return Promise.all((this._listeners.get(type) || []).map(fn => fn(ev)));
   }
   click() { return this.dispatch('click'); }
+  focus() { if (this.ownerDocument) this.ownerDocument.activeElement = this; }
   querySelectorAll() { return []; }
 }
 
 function makeDocument() {
   const byId = new Map();
   const doc = {
+    activeElement: null,
     getElementById(id) {
-      if (!byId.has(id)) byId.set(id, new FakeElement('div', id));
+      if (!byId.has(id)) byId.set(id, new FakeElement('div', id, doc));
       return byId.get(id);
     },
     querySelector(sel) { return sel.startsWith('#') ? doc.getElementById(sel.slice(1)) : null; },
     querySelectorAll() { return []; },
-    createElement(tag) { return new FakeElement(tag, ''); },
-    createTextNode(s) { return { nodeType: 3, textContent: String(s), children: [], parentNode: null }; },
-    body: new FakeElement('body', '')
+    createElement(tag) { return new FakeElement(tag, '', doc); },
+    createTextNode(s) { return { nodeType: 3, textContent: String(s), children: [], parentNode: null }; }
   };
+  doc.body = new FakeElement('body', '', doc);
   return doc;
 }
 
@@ -250,6 +254,7 @@ export async function loadPopup(opts = {}) {
 
   return {
     doc,
+    RegLog,
     state,
     adapter,
     store,
@@ -266,6 +271,7 @@ export async function loadPopup(opts = {}) {
     },
     async clickTab(name) { await doc.getElementById(`tab-${name}`).click(); await tick(); await tick(); },
     async click(el, init) { await el.dispatch('click', init); await tick(); await tick(); },
+    async keydown(el, key) { await el.dispatch('keydown', { key }); await tick(); await tick(); },
     async emitBatch(batch) { state.pollCb(batch); await tick(); },
     async emitMail(messages) { state.pollCb({ ok: true, messages }); await tick(); },
     toastText: () => doc.getElementById('toast').textContent,

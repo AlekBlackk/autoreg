@@ -36,11 +36,15 @@
   P.onLeave = function (name, fn) { leaveHandlers[name] = fn; };
 
   let activeTabName = 'new'; // соответствует aria-selected="true" на #tab-new в разметке
+  P.activeTab = function activeTab() { return activeTabName; };
   P.selectTab = function selectTab(name) {
+    if (!Object.prototype.hasOwnProperty.call(P.tabs, name)) return;
     if (activeTabName !== name && leaveHandlers[activeTabName]) leaveHandlers[activeTabName]();
     for (const key of Object.keys(P.panes)) {
       document.querySelector(P.panes[key]).hidden = key !== name;
-      document.querySelector(P.tabs[key]).setAttribute('aria-selected', String(key === name));
+      const tab = document.querySelector(P.tabs[key]);
+      tab.setAttribute('aria-selected', String(key === name));
+      tab.tabIndex = key === name ? 0 : -1;
     }
     activeTabName = name;
     RegLog.store.setSessionState({ activeTab: name });
@@ -48,7 +52,21 @@
   };
 
   for (const key of Object.keys(P.tabs)) {
-    document.querySelector(P.tabs[key]).addEventListener('click', () => P.selectTab(key));
+    const tab = document.querySelector(P.tabs[key]);
+    tab.addEventListener('click', () => P.selectTab(key));
+    tab.addEventListener('keydown', event => {
+      const keys = Object.keys(P.tabs);
+      const index = keys.indexOf(key);
+      let target;
+      if (event.key === 'Home') target = keys[0];
+      else if (event.key === 'End') target = keys[keys.length - 1];
+      else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') target = keys[(index + 1) % keys.length];
+      else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') target = keys[(index - 1 + keys.length) % keys.length];
+      else return;
+      event.preventDefault();
+      P.selectTab(target);
+      document.querySelector(P.tabs[target]).focus();
+    });
   }
 
   P.currentTab = async function currentTab() {
