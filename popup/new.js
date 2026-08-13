@@ -20,6 +20,7 @@
 
     currentDraft = await RegLog.store.getDraft(P.state.currentDomain);
     renderKit(currentDraft);
+    syncPresetState((await RegLog.store.getSettings()).passPreset);
 
     if (isRestrictedUrl(tab.url)) {
       showNotice('На этой странице расширение работать не может.', 'danger');
@@ -67,6 +68,22 @@
     }
   }
 
+  // Статус в шапке вкладки: коротко называет, есть ли уже с чем работать (черновик +
+  // ящик готовы), не хватает только адреса, или комплекта вообще ещё нет.
+  function updateKitStatus(draft, session) {
+    const status = document.getElementById('kit-status');
+    status.textContent = draft && session ? 'Готово' : draft ? 'Нужен адрес' : 'Нет данных';
+    status.className = 'status-pill' + (draft && session ? ' is-success' : '');
+  }
+
+  // Единственный источник pressed-состояния у чипов совместимости пароля: сверяет
+  // dataset.preset каждого чипа с активным пресетом настроек, а не хранит его отдельно.
+  function syncPresetState(activePreset) {
+    for (const btn of document.querySelectorAll('.kit-preset-btn')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.preset === activePreset));
+    }
+  }
+
   function renderKit(draft) {
     const nameBtn = document.getElementById('kit-name');
     const userBtn = document.getElementById('kit-user');
@@ -79,6 +96,7 @@
     passBtn.textContent = (draft && draft.password) || '—';
 
     RegLog.store.getSession(P.state.currentDomain).then(session => {
+      updateKitStatus(draft, session);
       if (session) {
         mailBtn.textContent = session.address;
         providerLabel.textContent = P.labelFor(session.provider);
@@ -106,10 +124,22 @@
     });
   }
 
+  // Отдельные кнопки-иконки копирования рядом со значением (для мыши/тача, где по
+  // самому значению кликнуть неочевидно) — читают то же значение через data-copy-target,
+  // не дублируя его.
+  for (const button of document.querySelectorAll('.kit-copy')) {
+    button.addEventListener('click', async () => {
+      const value = document.getElementById(button.dataset.copyTarget).textContent;
+      if (!value || value === '—') return;
+      await P.copyText(value);
+      P.showToast('Скопировано');
+    });
+  }
+
   function showNotice(text, kind) {
     const notice = document.getElementById('notice');
     notice.textContent = text;
-    notice.className = kind || '';
+    notice.className = 'inline-alert' + (kind ? ' ' + kind : '');
     notice.hidden = false;
   }
   function hideNotice() {
@@ -121,9 +151,8 @@
     const f = scanResult.result.found;
     const foundList = Object.entries(f).filter(([, v]) => v).map(fieldLabel);
     const missingList = Object.entries(f).filter(([, v]) => !v).map(fieldLabel);
-    let text = '';
-    if (foundList.length) text += `найдено: ${foundList.join(', ')}`;
-    if (missingList.length) text += (text ? ' · ' : '') + `нет: ${missingList.join(', ')}`;
+    const text = `Найдено: ${foundList.join(', ') || 'нет'} · Не найдено: ${missingList.join(', ') || 'нет'}`;
+    document.getElementById('scan-status').textContent = text;
     document.getElementById('live').textContent = text;
   }
   function fieldLabel(key) {
@@ -131,6 +160,16 @@
   }
 
   async function generateNew() {
+    const btn = document.getElementById('btn-generate');
+    P.setBusy(btn, true, 'Генерируем…');
+    try {
+      await generateNewBody();
+    } finally {
+      P.setBusy(btn, false);
+    }
+  }
+
+  async function generateNewBody() {
     setActionsDisabled(true);
     document.getElementById('kit-mail').textContent = 'беру адрес…';
     hideNotice();
@@ -203,6 +242,7 @@
     currentDraft = { ...currentDraft, password };
     await RegLog.store.setDraft(P.state.currentDomain, currentDraft);
     renderKit(currentDraft);
+    syncPresetState(preset);
   }
 
   for (const btn of document.querySelectorAll('.kit-preset-btn')) {
@@ -210,68 +250,74 @@
   }
 
   document.getElementById('btn-fill').addEventListener('click', async () => {
-    if (!currentDraft) await generateNew();
-    // generateNew()'s own catch (Task 16 F2) deliberately leaves currentDraft null when
-    // the journal is locked-but-not-yet-unlocked this session, and already shows a notice
-    // explaining why — bail here rather than dereferencing currentDraft.name below.
-    if (!currentDraft) return;
-    const tab = await P.currentTab();
-    const session = await RegLog.store.getSession(P.state.currentDomain);
-    const settings = await RegLog.store.getSettings();
-    const payload = {
-      mode: 'fill',
-      data: { name: currentDraft.name, username: currentDraft.username, email: session?.address, password: currentDraft.password },
-      opts: { slowType: settings.slowType, watchMs: 3000 }
-    };
-    const outcome = await RegLog.frames.runOnBestFrame(tab.id, payload);
-    if (!outcome || outcome.error || outcome.result.score === 0) {
-      const needsFrames = await RegLog.frames.needsFrameAccess(tab.id);
-      document.getElementById('frames-block').hidden = !needsFrames;
-      if (needsFrames) renderFramesBlock(tab.id);
-      return;
-    }
-    document.getElementById('frames-block').hidden = true;
-    const result = outcome.result;
-
-    if (result.emailRejected) {
-      showNoticeWithAction(result.rejectText || 'Похоже, почта отклонена сайтом', 'Другой домен',
-        () => document.getElementById('btn-other').click());
-      document.getElementById('btn-other').classList.add('warn-outline');
-    } else if (result.truncated.length > 0) {
-      // Прежний код срабатывал на ЛЮБОЕ обрезанное поле, но всегда говорил «пароль»
-      // и брал result.limits.password. Если сайт обрезал логин, а у пароля maxLength
-      // нет, limits.password === 0 — получалось «вместило только 0 символов», а кнопка
-      // звала gen.password(0, true) и подставляла пустой пароль.
-      // Теперь: про лимит пароля говорим только когда обрезан именно пароль, и когда
-      // длину реально знаем — из maxLength или из фактически влезшего значения.
-      const actualPass = result.actual && result.actual.password;
-      const passLimit = result.truncated.includes('password')
-        ? (result.limits.password > 0 ? result.limits.password : (actualPass ? actualPass.length : 0))
-        : 0;
-      if (passLimit > 0) {
-        showNoticeWithAction(
-          `Поле «пароль» вместило только ${passLimit} символов. В журнал записан фактический пароль.`,
-          'Сгенерировать под лимит',
-          async () => {
-            currentDraft.password = RegLog.gen.password(passLimit, true); // gen.password уже режет до len
-            await RegLog.store.setDraft(P.state.currentDomain, currentDraft);
-            renderKit(currentDraft);
-            document.getElementById('btn-fill').click();
-          }
-        );
-      } else {
-        const names = result.truncated.map(fieldLabel).join(', ');
-        showNotice(`Сайт обрезал поля: ${names}. В журнал записаны фактические значения.`);
+    const btn = document.getElementById('btn-fill');
+    P.setBusy(btn, true, 'Заполняем…');
+    try {
+      if (!currentDraft) await generateNew();
+      // generateNew()'s own catch (Task 16 F2) deliberately leaves currentDraft null when
+      // the journal is locked-but-not-yet-unlocked this session, and already shows a notice
+      // explaining why — bail here rather than dereferencing currentDraft.name below.
+      if (!currentDraft) return;
+      const tab = await P.currentTab();
+      const session = await RegLog.store.getSession(P.state.currentDomain);
+      const settings = await RegLog.store.getSettings();
+      const payload = {
+        mode: 'fill',
+        data: { name: currentDraft.name, username: currentDraft.username, email: session?.address, password: currentDraft.password },
+        opts: { slowType: settings.slowType, watchMs: 3000 }
+      };
+      const outcome = await RegLog.frames.runOnBestFrame(tab.id, payload);
+      if (!outcome || outcome.error || outcome.result.score === 0) {
+        const needsFrames = await RegLog.frames.needsFrameAccess(tab.id);
+        document.getElementById('frames-block').hidden = !needsFrames;
+        if (needsFrames) renderFramesBlock(tab.id);
+        return;
       }
-      notice_setKind('warn');
-    } else {
-      hideNotice();
-    }
+      document.getElementById('frames-block').hidden = true;
+      const result = outcome.result;
 
-    if (settings.autoSave) await saveEntryFromActual(result.actual, session);
+      if (result.emailRejected) {
+        showNoticeWithAction(result.rejectText || 'Похоже, почта отклонена сайтом', 'Другой домен',
+          () => document.getElementById('btn-other').click());
+        document.getElementById('btn-other').classList.add('warn-outline');
+      } else if (result.truncated.length > 0) {
+        // Прежний код срабатывал на ЛЮБОЕ обрезанное поле, но всегда говорил «пароль»
+        // и брал result.limits.password. Если сайт обрезал логин, а у пароля maxLength
+        // нет, limits.password === 0 — получалось «вместило только 0 символов», а кнопка
+        // звала gen.password(0, true) и подставляла пустой пароль.
+        // Теперь: про лимит пароля говорим только когда обрезан именно пароль, и когда
+        // длину реально знаем — из maxLength или из фактически влезшего значения.
+        const actualPass = result.actual && result.actual.password;
+        const passLimit = result.truncated.includes('password')
+          ? (result.limits.password > 0 ? result.limits.password : (actualPass ? actualPass.length : 0))
+          : 0;
+        if (passLimit > 0) {
+          showNoticeWithAction(
+            `Поле «пароль» вместило только ${passLimit} символов. В журнал записан фактический пароль.`,
+            'Сгенерировать под лимит',
+            async () => {
+              currentDraft.password = RegLog.gen.password(passLimit, true); // gen.password уже режет до len
+              await RegLog.store.setDraft(P.state.currentDomain, currentDraft);
+              renderKit(currentDraft);
+              document.getElementById('btn-fill').click();
+            }
+          );
+        } else {
+          const names = result.truncated.map(fieldLabel).join(', ');
+          showNotice(`Сайт обрезал поля: ${names}. В журнал записаны фактические значения.`);
+        }
+        notice_setKind('warn');
+      } else {
+        showNotice('Данные заполнены. Отправьте форму на сайте самостоятельно.', 'success');
+      }
+
+      if (settings.autoSave) await saveEntryFromActual(result.actual, session);
+    } finally {
+      P.setBusy(btn, false);
+    }
   });
 
-  function notice_setKind(kind) { document.getElementById('notice').className = kind; }
+  function notice_setKind(kind) { document.getElementById('notice').className = 'inline-alert' + (kind ? ' ' + kind : ''); }
 
   async function saveEntryFromActual(actual, session) {
     const entryData = {
@@ -329,9 +375,15 @@
   document.getElementById('btn-other').addEventListener('click', switchToOtherDomain);
 
   document.getElementById('btn-rescan').addEventListener('click', async () => {
-    const tab = await P.currentTab();
-    const scanResult = await RegLog.frames.runOnBestFrame(tab.id, { mode: 'scan', data: {}, opts: {} });
-    renderScanSummary(scanResult);
+    const btn = document.getElementById('btn-rescan');
+    P.setBusy(btn, true, 'Проверяем…');
+    try {
+      const tab = await P.currentTab();
+      const scanResult = await RegLog.frames.runOnBestFrame(tab.id, { mode: 'scan', data: {}, opts: {} });
+      renderScanSummary(scanResult);
+    } finally {
+      P.setBusy(btn, false);
+    }
   });
 
   document.getElementById('btn-save').addEventListener('click', async () => {

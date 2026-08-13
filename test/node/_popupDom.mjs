@@ -89,8 +89,31 @@ class FakeElement {
   }
   click() { return this.dispatch('click'); }
   focus() { if (this.ownerDocument) this.ownerDocument.activeElement = this; }
-  querySelectorAll() { return []; }
+  // querySelectorAll на элементе перенаправляется в тот же реестр по классу, что
+  // и document.querySelectorAll — иначе .kit-copy/.kit-preset-btn/.mail-preview-btn
+  // (сканируемые popup/*.js относительно #kit/#mail-list, а не document) видели бы
+  // пустой список в тестах.
+  querySelectorAll(sel) { return this.ownerDocument ? this.ownerDocument.querySelectorAll(sel) : []; }
 }
+
+// Наборы статичных кнопок, которые в реальном popup.html — несколько одинаковых по
+// классу элементов в разметке (не создаются JS в рантайме), а не одно id. Фейковый
+// DOM ленивый (элемент рождается по первому getElementById), поэтому
+// document.querySelectorAll(class) не может обойти «настоящую» разметку — вместо
+// этого здесь прописан её эквивалент: id, dataset и видимый текст, как в popup.html.
+const QUERY_ALL_SETS = {
+  '.kit-preset-btn': [
+    { id: 'preset-strong', className: 'chip kit-preset-btn', dataset: { preset: 'strong' }, text: 'Надёжный' },
+    { id: 'preset-safe', className: 'chip kit-preset-btn', dataset: { preset: 'safe' }, text: 'Совместимый' },
+    { id: 'preset-legacy', className: 'chip kit-preset-btn', dataset: { preset: 'legacy' }, text: 'Устаревший' }
+  ],
+  '.kit-copy': [
+    { id: 'copy-kit-name', className: 'kit-copy icon-button', dataset: { copyTarget: 'kit-name' } },
+    { id: 'copy-kit-user', className: 'kit-copy icon-button', dataset: { copyTarget: 'kit-user' } },
+    { id: 'copy-kit-mail', className: 'kit-copy icon-button', dataset: { copyTarget: 'kit-mail' } },
+    { id: 'copy-kit-pass', className: 'kit-copy icon-button', dataset: { copyTarget: 'kit-pass' } }
+  ]
+};
 
 function makeDocument() {
   const byId = new Map();
@@ -101,7 +124,17 @@ function makeDocument() {
       return byId.get(id);
     },
     querySelector(sel) { return sel.startsWith('#') ? doc.getElementById(sel.slice(1)) : null; },
-    querySelectorAll() { return []; },
+    querySelectorAll(sel) {
+      const set = QUERY_ALL_SETS[sel];
+      if (!set) return [];
+      return set.map(spec => {
+        const el = doc.getElementById(spec.id);
+        el.className = spec.className;
+        Object.assign(el.dataset, spec.dataset);
+        if (spec.text !== undefined && !el._text) el.textContent = spec.text;
+        return el;
+      });
+    },
     createElement(tag) { return new FakeElement(tag, '', doc); },
     createTextNode(s) { return { nodeType: 3, textContent: String(s), children: [], parentNode: null }; }
   };
@@ -148,7 +181,7 @@ export async function loadPopup(opts = {}) {
     // именно то, что popup.js её НЕ зовёт.
     confirmAnswer: true, confirmCalls: 0,
     removeEntryCalls: 0, addEntryCalls: 0, clearEntriesCalls: 0,
-    createdTabs: []
+    createdTabs: [], clipboardWrites: []
   };
 
   const store = {
@@ -228,7 +261,7 @@ export async function loadPopup(opts = {}) {
     location: { search: opts.panel ? '?panel=1' : '' },
     chrome,
     RegLog,
-    navigator: { clipboard: { async writeText() {} } },
+    navigator: { clipboard: { async writeText(text) { state.clipboardWrites.push(String(text)); } } },
     confirm: () => { state.confirmCalls++; return state.confirmAnswer; },
     alert: () => {},
     addEventListener: () => {},

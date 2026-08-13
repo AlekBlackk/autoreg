@@ -30,42 +30,60 @@
 
   <main id="panes" class="workspace">
     <section id="pane-new" data-pane role="tabpanel" aria-labelledby="tab-new">
-      <div id="notice" role="alert" hidden></div>
+      <section class="section-heading" aria-labelledby="new-title">
+        <div><p class="eyebrow">Текущий сайт</p><h1 id="new-title">Новый аккаунт</h1></div>
+        <span id="kit-status" class="status-pill">Нет данных</span>
+      </section>
 
-      <div id="kit" class="kit">
+      <div id="notice" class="inline-alert" role="alert" hidden></div>
+
+      <section id="kit" class="data-grid" aria-label="Данные аккаунта">
         <div class="kit-row">
-          <span class="kit-label">имя</span>
-          <button id="kit-name" type="button" class="kit-value mono"></button>
+          <span class="kit-label">Имя</span>
+          <button id="kit-name" type="button" class="kit-value mono" title="Скопировать имя"></button>
+          <button id="copy-kit-name" type="button" class="kit-copy icon-button" data-copy-target="kit-name" aria-label="Скопировать имя">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 8h10v11H8zM5 5h10v3M5 5v11h3"/></svg>
+          </button>
         </div>
         <div class="kit-row">
-          <span class="kit-label">логин</span>
-          <button id="kit-user" type="button" class="kit-value mono"></button>
+          <span class="kit-label">Логин</span>
+          <button id="kit-user" type="button" class="kit-value mono" title="Скопировать логин"></button>
+          <button id="copy-kit-user" type="button" class="kit-copy icon-button" data-copy-target="kit-user" aria-label="Скопировать логин">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 8h10v11H8zM5 5h10v3M5 5v11h3"/></svg>
+          </button>
         </div>
         <div class="kit-row">
-          <span class="kit-label">почта</span>
-          <button id="kit-mail" type="button" class="kit-value mono"></button>
+          <span class="kit-label">Почта</span>
+          <button id="kit-mail" type="button" class="kit-value mono" title="Скопировать почту"></button>
+          <button id="copy-kit-mail" type="button" class="kit-copy icon-button" data-copy-target="kit-mail" aria-label="Скопировать почту">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 8h10v11H8zM5 5h10v3M5 5v11h3"/></svg>
+          </button>
           <span id="kit-provider" class="kit-provider"></span>
         </div>
         <div class="kit-row">
-          <span class="kit-label">пароль</span>
-          <button id="kit-pass" type="button" class="kit-value mono"></button>
+          <span class="kit-label">Пароль</span>
+          <button id="kit-pass" type="button" class="kit-value mono" title="Скопировать пароль"></button>
+          <button id="copy-kit-pass" type="button" class="kit-copy icon-button" data-copy-target="kit-pass" aria-label="Скопировать пароль">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 8h10v11H8zM5 5h10v3M5 5v11h3"/></svg>
+          </button>
         </div>
-        <div class="kit-row kit-presets" role="group" aria-label="пресет пароля">
-          <span class="kit-label">пресет</span>
-          <button type="button" class="chip kit-preset-btn" data-preset="strong">strong</button>
-          <button type="button" class="chip kit-preset-btn" data-preset="safe">safe</button>
-          <button type="button" class="chip kit-preset-btn" data-preset="legacy">legacy</button>
+        <div class="kit-row kit-presets" role="group" aria-label="Совместимость пароля">
+          <span class="kit-label">Пароль</span>
+          <button id="preset-strong" type="button" class="chip kit-preset-btn" data-preset="strong" aria-pressed="false">Надёжный</button>
+          <button id="preset-safe" type="button" class="chip kit-preset-btn" data-preset="safe" aria-pressed="false">Совместимый</button>
+          <button id="preset-legacy" type="button" class="chip kit-preset-btn" data-preset="legacy" aria-pressed="false">Устаревший</button>
         </div>
-      </div>
+      </section>
 
       <div id="frames-block" hidden></div>
 
-      <div class="actions">
-        <button id="btn-generate" type="button">Сгенерировать</button>
-        <button id="btn-fill" type="button" class="accent">Заполнить форму</button>
-        <button id="btn-rescan" type="button">Проверить поля</button>
-        <button id="btn-other" type="button">Другой домен</button>
-        <button id="btn-save" type="button">Записать в журнал</button>
+      <p id="scan-status" class="scan-status" aria-live="polite">Поля формы ещё не проверены</p>
+      <button id="btn-fill" type="button" class="button button-primary primary-action">Заполнить форму</button>
+      <div class="secondary-actions">
+        <button id="btn-generate" type="button" class="button button-secondary">Создать новые данные</button>
+        <button id="btn-rescan" type="button" class="button button-secondary">Проверить поля</button>
+        <button id="btn-other" type="button" class="button button-secondary">Сменить адрес</button>
+        <button id="btn-save" type="button" class="button button-secondary">Записать в журнал</button>
       </div>
     </section>
 

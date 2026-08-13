@@ -96,6 +96,26 @@
     }
   };
 
+  // Общий busy-хелпер для любой вкладки: запоминает исходную подпись кнопки в
+  // dataset (переживает повторные вызовы setBusy(true) без потери исходного текста),
+  // блокирует её и ставит aria-busy, чтобы состояние было видно и в разметке, и
+  // скринридеру, не только через disabled.
+  P.setBusy = function setBusy(button, busy, label) {
+    if (!button) return;
+    if (busy) {
+      if (!button.dataset.idleLabel) button.dataset.idleLabel = button.textContent;
+      button.disabled = true;
+      button.classList.add('is-loading');
+      button.setAttribute('aria-busy', 'true');
+      if (label) button.textContent = label;
+      return;
+    }
+    button.disabled = false;
+    button.classList.remove('is-loading');
+    button.removeAttribute('aria-busy');
+    if (button.dataset.idleLabel) button.textContent = button.dataset.idleLabel;
+  };
+
   P.showToast = function showToast(text) {
     const toast = document.getElementById('toast');
     toast.textContent = text; toast.hidden = false;
