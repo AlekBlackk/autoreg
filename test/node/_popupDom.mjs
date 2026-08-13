@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 // Элементы, которые в popup.html размечены hidden: авто-создаваемый элемент иначе
 // стартовал бы видимым и тесты на «осталось скрытым» ничего бы не проверяли.
 const HIDDEN_IN_MARKUP = new Set([
-  'schema-banner', 'notice', 'frames-block', 'mail-body', 'mail-code', 'log-more',
+  'schema-banner', 'notice', 'frames-block', 'mail-view', 'mail-body', 'mail-code', 'log-more',
   'export-modal', 'log-unlock', 'log-unlock-error', 'inbox-error', 'set-lock-form', 'set-lock-error',
   'set-disable-lock-form', 'set-disable-lock-error', 'set-clear-form', 'toast', 'inbox-badge',
   'pane-inbox', 'pane-log', 'pane-settings'
@@ -196,6 +196,7 @@ export async function loadPopup(opts = {}) {
       adapters: [adapter],
       decodeEntities: (s) => (s == null ? '' : String(s)),
       extract: opts.extract || (() => ({ code: null, link: null, confidence: 'high' })),
+      splitLinkChips: opts.splitLinkChips || ((s) => (s ? [{ type: 'text', value: s }] : [])),
       async acquire() { return null; },
       async next() { return null; },
       async acquireDiagnostics() { return { allManuallyRejected: false }; },
