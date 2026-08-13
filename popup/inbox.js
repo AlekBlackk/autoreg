@@ -20,6 +20,8 @@
     // активному «Ящику», восстановление вкладки на boot) — поэтому старый интервал
     // гасим здесь же, а не только в stopInboxIfNeeded.
     if (ttlTimer) { clearInterval(ttlTimer); ttlTimer = null; }
+    document.getElementById('mail-view').hidden = true;
+    document.getElementById('mail-list').hidden = false;
     const session = await RegLog.store.getSession(P.state.currentDomain);
     const key = session ? `${P.state.currentDomain}|${session.address}` : null;
     if (key !== inboxKey) {
@@ -135,7 +137,9 @@
   // Тупик: адрес есть, читать его нечем. Единственный выход — новый ящик, поэтому
   // кнопка ведёт туда же, куда экран истечения.
   function showUnknownProvider(providerId) {
+    document.getElementById('mail-view').hidden = true;
     const list = document.getElementById('mail-list');
+    list.hidden = false;
     list.textContent = '';
     unreadCount = 0;
     updateInboxBadge();
@@ -151,7 +155,9 @@
   // providerId передаётся, а не хардкодится: раньше в тексте стоял «DropMail»,
   // хотя истечь может любой сервис с sessionTtlMs > 0, а сам DropMail отключён.
   function showInboxExpired(providerId) {
+    document.getElementById('mail-view').hidden = true;
     const list = document.getElementById('mail-list');
+    list.hidden = false;
     list.textContent = '';
     unreadCount = 0;
     updateInboxBadge();
@@ -218,7 +224,7 @@
       body.append(subj, intro);
 
       row.append(meta, body);
-      row.addEventListener('click', () => openMail(msg.id));
+      row.addEventListener('click', () => openMail(msg));
       list.appendChild(row);
       if (newIdSet.has(msg.id)) newRows.push(row);
     }
@@ -233,27 +239,61 @@
     }
   }
 
-  async function openMail(msgId) {
+  // Строит DOM тела письма из сегментов splitLinkChips: текстовые куски как есть
+  // (перенос строк рисует CSS white-space:pre-wrap на #mail-body), ссылки — маленькой
+  // кнопкой-чипом вместо сырого URL. safeExternalUrl — тот же второй барьер, что и у
+  // extracted.link ниже: непригодная схема не рендерится кликабельной, но и не
+  // пропадает — остаётся видимой как обычный текст `[url]`.
+  function renderMailBody(container, text) {
+    container.textContent = '';
+    for (const seg of RegLog.mail.splitLinkChips(text)) {
+      if (seg.type === 'text') {
+        if (seg.value) container.appendChild(document.createTextNode(seg.value));
+        continue;
+      }
+      const url = safeExternalUrl(seg.url);
+      if (!url) { container.appendChild(document.createTextNode(`[${seg.url}]`)); continue; }
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'chip mail-body-link';
+      btn.textContent = seg.label; btn.title = url;
+      btn.addEventListener('click', () => chrome.tabs.create({ url }));
+      container.appendChild(btn);
+    }
+  }
+
+  async function openMail(msg) {
     const session = await RegLog.store.getSession(P.state.currentDomain);
     if (!session) return;
     const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
     if (!adapter) { showUnknownProvider(session.provider); return; }
     let full;
     try {
-      full = await adapter.read(session, msgId);
+      full = await adapter.read(session, msg.id);
     } catch (e) {
       // Раньше отсюда уходил необработанный reject: сеть отвалилась или ящик истёк —
       // письмо просто не открывалось, без единого слова пользователю. Ветка 'expired'
       // повторяет обработчик «Обновить» (btn-refresh-inbox), остальное — тост, а не
-      // #notice: #notice лежит в pane-new и на вкладке «Ящик» его не видно.
+      // #notice: #notice лежит в pane-new и на вкладке «Ящик» его не видно. Список
+      // сюда не трогаем — он и так виден, показывать было нечего.
       if (e && e.reason === 'expired') showInboxExpired(session.provider);
       else P.showToast('Не удалось открыть письмо');
       return;
     }
+
+    document.getElementById('mail-meta-subject').textContent = RegLog.mail.decodeEntities(msg.subject);
+    document.getElementById('mail-meta-from').textContent = RegLog.mail.decodeEntities(msg.from);
+
     const bodyEl = document.getElementById('mail-body');
-    bodyEl.textContent = RegLog.mail.decodeEntities(full.text) || (full.html ? stripHtmlToTextClientSide(full.html) : '');
+    const bodyText = RegLog.mail.decodeEntities(full.text) || (full.html ? stripHtmlToTextClientSide(full.html) : '');
+    renderMailBody(bodyEl, bodyText);
     bodyEl.hidden = false;
     if (unreadCount > 0) { unreadCount--; updateInboxBadge(); }
+
+    // Чтение состоялось — теперь есть что показывать; список прячем именно тут,
+    // а не в начале функции, чтобы неудачное чтение (catch выше) не оставляло
+    // экран пустым между спрятанным списком и непоказанным письмом.
+    document.getElementById('mail-list').hidden = true;
+    document.getElementById('mail-view').hidden = false;
 
     const extracted = RegLog.mail.extract(full);
     const codeEl = document.getElementById('mail-code');
@@ -332,6 +372,11 @@
       if (e && e.reason === 'expired') showInboxExpired(session.provider);
       else showInboxError(e);
     }
+  });
+
+  document.getElementById('btn-mail-back').addEventListener('click', () => {
+    document.getElementById('mail-view').hidden = true;
+    document.getElementById('mail-list').hidden = false;
   });
 
   function stopInboxIfNeeded() {
