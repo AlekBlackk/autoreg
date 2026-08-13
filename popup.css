@@ -230,15 +230,22 @@ button.danger:hover:not(:disabled) { background: var(--surface-hover); }
   font-size: .95em; line-height: 1.5; white-space: pre-wrap; }
 .mail-body-link { margin: 0 var(--space-1) var(--space-1) 0; }
 
-fieldset { margin: 0 0 10px; padding: var(--space-2); border: 1px solid var(--border);
+.settings-section { margin: 0 0 var(--space-3); padding: var(--space-3); border: 1px solid var(--border);
   border-radius: var(--radius-md); background: var(--surface); }
-legend { padding: 0 var(--space-1); color: var(--text-muted); font-size: .75em;
-  letter-spacing: .1em; text-transform: uppercase; }
+.settings-section h2 { margin: 0 0 var(--space-2); font-size: 13px; }
+.switch-control { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control); }
+.switch-control input[type="checkbox"] { flex-shrink: 0; width: 18px; height: 18px; }
 #set-providers-list, #set-origins-list { margin: 0; padding: 0; list-style: none; }
 #set-providers-list li, #set-origins-list li { display: flex; align-items: center; gap: 6px;
   min-height: var(--control); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
 #set-providers-list li:last-child, #set-origins-list li:last-child { border-bottom: 0; }
 #set-providers-list li.disabled { color: var(--text-muted); }
+#set-providers-list li span:nth-child(2) { flex: 1; min-width: 0; }
+.provider-status { flex-shrink: 0; padding: 1px 7px; border-radius: 999px; background: var(--surface-hover);
+  color: var(--text-muted); font-size: .75em; white-space: nowrap; }
+.danger-zone { margin: var(--space-3) 0 0; padding: var(--space-3); border: 1px solid var(--danger);
+  border-radius: var(--radius-md); background: var(--surface); }
+.danger-zone h2 { margin: 0 0 var(--space-2); color: var(--danger); font-size: 13px; }
 label { display: block; margin: 6px 0; font-size: .85em; }
 input[type="search"], input[type="password"], input[type="text"], select {
   width: 100%; padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm);

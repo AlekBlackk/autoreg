@@ -22,6 +22,18 @@
     renderProvidersList(settings);
     renderOriginsSettings();
     renderRejectedCount();
+    renderLockStatus(settings);
+  }
+
+  // Единственная точка, где считается видимый статус защиты — сверяет настройку
+  // (включена ли защита вообще) с фактическим состоянием ключа сессии (crypto.js),
+  // а не только с чекбоксом: «включена, но ещё не разблокирована в этой сессии» —
+  // отдельное от «включена и разблокирована» состояние.
+  function renderLockStatus(settings) {
+    const status = document.getElementById('lock-status');
+    const unlocked = RegLog.crypto && RegLog.crypto.isUnlocked && RegLog.crypto.isUnlocked();
+    status.textContent = !settings.lockEnabled ? 'Не защищён' : unlocked ? 'Защищён' : 'Заблокирован';
+    status.className = 'status-pill' + (settings.lockEnabled ? ' is-success' : '');
   }
 
   function bindSettingField(id, key, transform) {
@@ -56,12 +68,23 @@
         const off = new Set(s.providersOff);
         checkbox.checked ? off.delete(id) : off.add(id);
         await RegLog.store.setSettings({ providersOff: Array.from(off) });
+        // Статус-слово рядом с чекбоксом обязан отражать то же переключение сразу,
+        // не только после следующего открытия вкладки.
+        renderProvidersList(await RegLog.store.getSettings());
       });
 
       const label = document.createElement('span');
       label.textContent = (adapter ? adapter.label : id) + (adapter && adapter.disabled ? ' (адаптер не реализован)' : '');
       if (adapter && adapter.publicInbox) label.textContent += ' · публичный ящик';
       if (adapter && adapter.sessionTtlMs > 0) label.textContent += ` · живёт ${P.ttlMinutes(adapter)} мин`;
+
+      // Статус словами, а не только видом чекбокса: «нет адаптера в сборке» и
+      // «пользователь сам выключил» — разные причины недоступности, их стоит различать.
+      const status = document.createElement('span');
+      status.className = 'provider-status';
+      status.textContent = !adapter || adapter.disabled
+        ? 'Недоступен'
+        : settings.providersOff.includes(id) ? 'Выключен' : 'Доступен';
 
       const upBtn = document.createElement('button'); upBtn.type = 'button'; upBtn.setAttribute('aria-label', `Переместить ${id} вверх`); upBtn.textContent = '↑';
       upBtn.disabled = idx === 0;
@@ -71,7 +94,7 @@
       downBtn.disabled = idx === settings.providers.length - 1;
       downBtn.addEventListener('click', () => moveProvider(idx, 1));
 
-      li.append(checkbox, label, upBtn, downBtn);
+      li.append(checkbox, label, status, upBtn, downBtn);
       ul.appendChild(li);
     });
   }
@@ -144,6 +167,7 @@
     document.getElementById('set-lock-pass1').value = '';
     document.getElementById('set-lock-pass2').value = '';
     document.getElementById('set-lock-form').hidden = true;
+    renderLockStatus(await RegLog.store.getSettings());
   });
 
   // Инлайн-форма отключения защиты вместо prompt()/alert() (Finding 6, финальное ревью):
@@ -156,13 +180,14 @@
     document.getElementById('set-disable-lock-form').hidden = false;
   }
 
-  function cancelDisableLockFlow() {
+  async function cancelDisableLockFlow() {
     document.getElementById('set-disable-lock-form').hidden = true;
     document.getElementById('set-disable-lock-pass').value = '';
     document.getElementById('set-disable-lock-error').hidden = true;
     // Отражает поведение прежнего prompt()-отказа (pass == null): чекбокс возвращается
     // в отмеченное состояние, журнал остаётся защищённым.
     document.getElementById('set-lockEnabled').checked = true;
+    renderLockStatus(await RegLog.store.getSettings());
   }
 
   document.getElementById('set-disable-lock-apply').addEventListener('click', async () => {
@@ -173,6 +198,7 @@
       await RegLog.store.disableLock(pass);
       document.getElementById('set-disable-lock-pass').value = '';
       document.getElementById('set-disable-lock-form').hidden = true;
+      renderLockStatus(await RegLog.store.getSettings());
     } catch (e) {
       // Неверный пароль остаётся здесь же для повторной попытки — форма никуда не
       // прыгает, в отличие от прежнего alert()+возврата к форме включения.

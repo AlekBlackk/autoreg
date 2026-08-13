@@ -144,8 +144,12 @@
     </section>
 
     <section id="pane-settings" data-pane role="tabpanel" aria-labelledby="tab-settings" hidden>
-      <fieldset>
-        <legend>Генерация</legend>
+      <section class="section-heading" aria-labelledby="settings-title">
+        <div><p class="eyebrow">Поведение расширения</p><h1 id="settings-title">Настройки</h1></div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="generation-title">
+        <h2 id="generation-title">Генерация</h2>
         <label>Стиль логина
           <select id="set-loginStyle">
             <option value="words">слова</option><option value="short">короткий</option><option value="random">случайный</option>
@@ -155,51 +159,53 @@
           <select id="set-passPreset"><option value="strong">strong</option><option value="safe">safe</option><option value="legacy">legacy</option></select>
         </label>
         <label>Длина пароля (strong) <input id="set-passLength" type="range" min="12" max="40"> <span id="set-passLength-val"></span></label>
-        <label><input id="set-symbols" type="checkbox"> спецсимволы</label>
-        <label><input id="set-autoSave" type="checkbox"> автосохранение в журнал</label>
-        <label><input id="set-slowType" type="checkbox"> медленный ввод</label>
-      </fieldset>
+        <label class="switch-control"><input id="set-symbols" type="checkbox"> спецсимволы</label>
+        <label class="switch-control"><input id="set-autoSave" type="checkbox"> автосохранение в журнал</label>
+        <label class="switch-control"><input id="set-slowType" type="checkbox"> медленный ввод</label>
+      </section>
 
-      <fieldset id="set-providers-block">
-        <legend>Сервисы почты</legend>
+      <section id="set-providers-block" class="settings-section" aria-labelledby="mail-settings-title">
+        <h2 id="mail-settings-title">Почта</h2>
         <ul id="set-providers-list"></ul>
         <p id="set-rejected-count"></p>
-        <button id="set-reset-all-rejected" type="button">Сбросить все отказы</button>
-      </fieldset>
+        <button id="set-reset-all-rejected" type="button" class="button button-secondary">Сбросить все отказы</button>
+      </section>
 
-      <fieldset id="set-frames-block">
-        <legend>Доступ к фреймам</legend>
+      <section id="set-frames-block" class="settings-section" aria-labelledby="access-title">
+        <h2 id="access-title">Доступ к сайтам</h2>
         <ul id="set-origins-list"></ul>
-        <button id="set-revoke-webnav" type="button">Отозвать доступ к списку фреймов</button>
-      </fieldset>
+        <button id="set-revoke-webnav" type="button" class="button button-secondary">Отозвать доступ к списку фреймов</button>
+      </section>
 
-      <fieldset id="set-lock-block">
-        <legend>Защита журнала</legend>
-        <label><input id="set-lockEnabled" type="checkbox"> мастер-пароль</label>
+      <section id="set-lock-block" class="settings-section" aria-labelledby="protection-title">
+        <div class="section-heading compact"><h2 id="protection-title">Защита данных</h2><span id="lock-status" class="status-pill">Не защищён</span></div>
+        <label class="switch-control"><input id="set-lockEnabled" type="checkbox"> мастер-пароль</label>
         <div id="set-lock-form" hidden>
           <p>Забытый пароль = потерянный журнал. Восстановления нет и не будет.</p>
           <label>Пароль <input id="set-lock-pass1" type="password"></label>
           <label>Повтори пароль <input id="set-lock-pass2" type="password"></label>
-          <button id="set-lock-apply" type="button">Применить</button>
+          <button id="set-lock-apply" type="button" class="button button-secondary">Применить</button>
           <p id="set-lock-error" role="alert" hidden></p>
         </div>
         <div id="set-disable-lock-form" hidden>
           <p>Введи текущий мастер-пароль, чтобы отключить защиту.</p>
           <label>Пароль <input id="set-disable-lock-pass" type="password"></label>
-          <button id="set-disable-lock-apply" type="button">Отключить</button>
-          <button id="set-disable-lock-cancel" type="button">Отмена</button>
+          <button id="set-disable-lock-apply" type="button" class="button button-secondary">Отключить</button>
+          <button id="set-disable-lock-cancel" type="button" class="button button-secondary">Отмена</button>
           <p id="set-disable-lock-error" role="alert" hidden></p>
         </div>
-      </fieldset>
+      </section>
 
-      <button id="set-clear-entries" type="button">Очистить журнал</button>
-      <div id="set-clear-form" hidden>
-        <p>Очистить весь журнал? Это необратимо.</p>
-        <button id="set-clear-apply" type="button" class="danger">Очистить</button>
-        <button id="set-clear-cancel" type="button">Отмена</button>
-      </div>
-
-      <p class="muted">Журнал лежит в chrome.storage.local, без мастер-пароля в открытом виде. Временная почта общедоступна по определению, а у части сервисов инбокс читает любой, кто знает адрес, — поэтому RegLog годится для одноразовых регистраций, а не для чего-то ценного.</p>
+      <section class="danger-zone" aria-labelledby="danger-title">
+        <h2 id="danger-title">Опасная зона</h2>
+        <button id="set-clear-entries" type="button" class="button danger">Очистить журнал</button>
+        <div id="set-clear-form" hidden>
+          <p>Очистить весь журнал? Это необратимо.</p>
+          <button id="set-clear-apply" type="button" class="button danger">Очистить</button>
+          <button id="set-clear-cancel" type="button" class="button button-secondary">Отмена</button>
+        </div>
+        <p class="muted">Журнал лежит в chrome.storage.local, без мастер-пароля в открытом виде. Временная почта общедоступна по определению, а у части сервисов инбокс читает любой, кто знает адрес, — поэтому RegLog годится для одноразовых регистраций, а не для чего-то ценного.</p>
+      </section>
     </section>
   </main>
   </div>
