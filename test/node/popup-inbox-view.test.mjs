@@ -7,6 +7,8 @@
 //   3) чип из splitLinkChips кликается и открывает именно свой url, а не текст лейбла.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { loadPopup } from './_popupDom.mjs';
 
 function descendants(el) {
@@ -15,6 +17,22 @@ function descendants(el) {
   return out;
 }
 function buttons(el) { return descendants(el).filter(n => n.tagName === 'BUTTON'); }
+
+// Фейковый DOM (_popupDom.mjs) создаёт любой id по первому getElementById — тест на
+// нём не поймал бы опечатку в реальной разметке. Читаем настоящий popup.html и
+// проверяем id, на которые опирается этот файл, тем же приёмом, что и
+// popup-inbox-errors.test.mjs для #inbox-error.
+test('popup.html содержит id письма-раскрытия: mail-view, btn-mail-back, mail-meta-subject, mail-meta-from', () => {
+  const html = readFileSync(fileURLToPath(new URL('../../popup.html', import.meta.url)), 'utf8');
+
+  const viewTag = html.match(/<[^>]*id="mail-view"[^>]*>/);
+  assert.ok(viewTag, 'нужен контейнер #mail-view');
+  assert.match(viewTag[0], /\bhidden\b/, 'по умолчанию раскрытое письмо скрыто');
+
+  assert.ok(html.match(/<[^>]*id="btn-mail-back"[^>]*>/), 'нужна кнопка «Назад к списку» #btn-mail-back');
+  assert.ok(html.match(/<[^>]*id="mail-meta-subject"[^>]*>/), 'нужен элемент темы #mail-meta-subject');
+  assert.ok(html.match(/<[^>]*id="mail-meta-from"[^>]*>/), 'нужен элемент отправителя #mail-meta-from');
+});
 
 test('открытие письма прячет список и показывает mail-view', async () => {
   const h = await loadPopup();

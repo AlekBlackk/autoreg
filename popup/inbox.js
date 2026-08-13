@@ -15,13 +15,26 @@
   let inboxKey = null;
   let inboxFailStreak = 0;
 
+  // Единственная точка, где решается видимость «список vs письмо» — было 5 отдельных
+  // мест, синхронизировать руками, и один уже расходился (see git history).
+  function showMailList() {
+    document.getElementById('mail-view').hidden = true;
+    document.getElementById('mail-list').hidden = false;
+    document.getElementById('btn-refresh-inbox').hidden = false;
+  }
+
+  function showMailView() {
+    document.getElementById('mail-list').hidden = true;
+    document.getElementById('btn-refresh-inbox').hidden = true;
+    document.getElementById('mail-view').hidden = false;
+  }
+
   async function initInboxTab() {
     // Вход на вкладку не всегда идёт через «уход с вкладки» (повторный клик по уже
     // активному «Ящику», восстановление вкладки на boot) — поэтому старый интервал
     // гасим здесь же, а не только в stopInboxIfNeeded.
     if (ttlTimer) { clearInterval(ttlTimer); ttlTimer = null; }
-    document.getElementById('mail-view').hidden = true;
-    document.getElementById('mail-list').hidden = false;
+    showMailList();
     const session = await RegLog.store.getSession(P.state.currentDomain);
     const key = session ? `${P.state.currentDomain}|${session.address}` : null;
     if (key !== inboxKey) {
@@ -137,9 +150,8 @@
   // Тупик: адрес есть, читать его нечем. Единственный выход — новый ящик, поэтому
   // кнопка ведёт туда же, куда экран истечения.
   function showUnknownProvider(providerId) {
-    document.getElementById('mail-view').hidden = true;
+    showMailList();
     const list = document.getElementById('mail-list');
-    list.hidden = false;
     list.textContent = '';
     unreadCount = 0;
     updateInboxBadge();
@@ -155,9 +167,8 @@
   // providerId передаётся, а не хардкодится: раньше в тексте стоял «DropMail»,
   // хотя истечь может любой сервис с sessionTtlMs > 0, а сам DropMail отключён.
   function showInboxExpired(providerId) {
-    document.getElementById('mail-view').hidden = true;
+    showMailList();
     const list = document.getElementById('mail-list');
-    list.hidden = false;
     list.textContent = '';
     unreadCount = 0;
     updateInboxBadge();
@@ -292,8 +303,7 @@
     // Чтение состоялось — теперь есть что показывать; список прячем именно тут,
     // а не в начале функции, чтобы неудачное чтение (catch выше) не оставляло
     // экран пустым между спрятанным списком и непоказанным письмом.
-    document.getElementById('mail-list').hidden = true;
-    document.getElementById('mail-view').hidden = false;
+    showMailView();
 
     const extracted = RegLog.mail.extract(full);
     const codeEl = document.getElementById('mail-code');
@@ -375,8 +385,7 @@
   });
 
   document.getElementById('btn-mail-back').addEventListener('click', () => {
-    document.getElementById('mail-view').hidden = true;
-    document.getElementById('mail-list').hidden = false;
+    showMailList();
   });
 
   function stopInboxIfNeeded() {

@@ -395,6 +395,14 @@ test('splitLinkChips с мусорным (длинным слитным) лей�
   assert.equal(segs[1].value, `${junk} хвост`, 'мусорный хвост остаётся текстом, а не пропадает');
 });
 
+test('splitLinkChips: короткий лейбл, похожий на URL, тоже падает на хост (не даёт спуфить адрес)', async () => {
+  const RegLog = await freshMail();
+  const segs = RegLog.mail.splitLinkChips('[https://real.test/x]https://evil.test/y хвост');
+  assert.equal(segs[0].type, 'link');
+  assert.equal(segs[0].url, 'https://real.test/x');
+  assert.equal(segs[0].label, 'real.test', 'лейбл обязан быть хостом реальной ссылки, а не текстом со спуфящим доменом');
+});
+
 test('splitLinkChips: пустой лейбл (сразу перевод строки) тоже падает на хост', async () => {
   const RegLog = await freshMail();
   const segs = RegLog.mail.splitLinkChips('[https://icons.test/a.png]\nследующая строка');
