@@ -20,11 +20,15 @@
   async function initLogTab() {
     const entries = await RegLog.store.getEntries();
     if (entries && entries.__locked) {
+      // Заблокированный журнал: только форма разблокировки и её ошибка — поиск, список,
+      // счётчик и экспорт нечего показывать, пока нет ключа для расшифровки.
+      document.getElementById('log-controls').hidden = true;
       document.getElementById('log-unlock').hidden = false;
       document.getElementById('log-list').textContent = '';
       document.getElementById('log-more').hidden = true;
       return;
     }
+    document.getElementById('log-controls').hidden = false;
     document.getElementById('log-unlock').hidden = true;
     logAllEntries = entries;
     applyLogFilter(document.getElementById('log-search').value);
@@ -56,31 +60,80 @@
     const slice = logFiltered.slice(logRenderedCount, logRenderedCount + LOG_PAGE);
     for (const entry of slice) list.appendChild(renderLogRow(entry));
     logRenderedCount += slice.length;
-    document.getElementById('log-more').hidden = logRenderedCount >= logFiltered.length;
+
+    document.getElementById('log-result-count').textContent = `Записей: ${logFiltered.length}`;
+    const remaining = Math.max(0, logFiltered.length - logRenderedCount);
+    const more = document.getElementById('log-more');
+    more.hidden = remaining === 0;
+    more.textContent = remaining > 0 ? `Показать ещё · осталось ${remaining}` : 'Показать ещё';
   }
 
   document.getElementById('log-search').addEventListener('input', (e) => applyLogFilter(e.target.value));
   document.getElementById('log-more').addEventListener('click', renderMoreLogEntries);
 
+  // Полный текстовый комплект записи для «Копировать набор» — тот же порядок полей,
+  // что и в карточке комплекта на вкладке «Новый».
+  function accountText(entry) {
+    return [
+      `Сайт: ${entry.host || ''}`,
+      `Имя: ${entry.name || ''}`,
+      `Логин: ${entry.username || ''}`,
+      `Почта: ${entry.email || ''}`,
+      `Пароль: ${entry.password || ''}`
+    ].join('\n');
+  }
+
   function renderLogRow(entry) {
     const row = document.createElement('div');
     row.className = 'log-row';
+
+    const main = document.createElement('div'); main.className = 'log-row-main';
     const domain = document.createElement('span'); domain.className = 'mono'; domain.textContent = entry.host;
     const date = document.createElement('span'); date.className = 'mono'; date.textContent = formatDateDDMMYY(entry.createdAt);
-    const provider = document.createElement('span'); provider.textContent = P.labelFor(entry.provider);
+    const provider = document.createElement('span'); provider.className = 'muted'; provider.textContent = P.labelFor(entry.provider);
+    main.append(domain, date, provider);
 
-    const userChip = makeChip('логин', entry.username);
-    const mailChip = makeChip('почта', entry.email);
-    const passChip = makeMaskedPassChip(entry.password);
+    const data = document.createElement('div'); data.className = 'log-row-data';
+    const userVal = document.createElement('span'); userVal.className = 'mono'; userVal.textContent = entry.username || '';
+    const mailVal = document.createElement('span'); mailVal.className = 'mono'; mailVal.textContent = entry.email || '';
+    // Пароль скрыт по умолчанию — явное раскрытие ниже, никакого Alt+клика.
+    const passwordValue = document.createElement('span');
+    passwordValue.className = 'log-password mono';
+    passwordValue.textContent = '••••••••';
+    data.append(userVal, mailVal, passwordValue);
+
+    const revealBtn = document.createElement('button');
+    revealBtn.type = 'button';
+    revealBtn.className = 'button button-secondary';
+    revealBtn.textContent = 'Показать пароль';
+    revealBtn.setAttribute('aria-pressed', 'false');
+    revealBtn.addEventListener('click', () => {
+      const reveal = revealBtn.getAttribute('aria-pressed') !== 'true';
+      const label = reveal ? 'Скрыть пароль' : 'Показать пароль';
+      revealBtn.setAttribute('aria-pressed', String(reveal));
+      revealBtn.textContent = label;
+      passwordValue.textContent = reveal ? entry.password : '••••••••';
+    });
+
+    const copyPassBtn = document.createElement('button');
+    copyPassBtn.type = 'button'; copyPassBtn.className = 'button button-secondary'; copyPassBtn.textContent = 'Скопировать пароль';
+    copyPassBtn.addEventListener('click', async () => { await P.copyText(entry.password || ''); P.showToast('Скопировано'); });
+
+    const copySetBtn = document.createElement('button');
+    copySetBtn.type = 'button'; copySetBtn.className = 'button button-secondary'; copySetBtn.textContent = 'Копировать набор';
+    copySetBtn.addEventListener('click', async () => { await P.copyText(accountText(entry)); P.showToast('Скопировано'); });
 
     const delBtn = document.createElement('button');
-    delBtn.type = 'button'; delBtn.setAttribute('aria-label', 'Удалить запись');
+    delBtn.type = 'button'; delBtn.className = 'icon-button'; delBtn.setAttribute('aria-label', 'Удалить запись');
     delBtn.textContent = '✕';
     // Промис намеренно не возвращается наружу: confirmDelete ждёт ответа в инлайн-плашке
     // и до клика пользователя не завершается. Все отказы store внутри обработаны.
     delBtn.addEventListener('click', () => { confirmDelete(entry, row); });
 
-    row.append(domain, date, provider, userChip, mailChip, passChip, delBtn);
+    const actions = document.createElement('div'); actions.className = 'log-row-actions';
+    actions.append(revealBtn, copyPassBtn, copySetBtn, delBtn);
+
+    row.append(main, data, actions);
     return row;
   }
 
@@ -88,36 +141,6 @@
     const d = new Date(ts);
     const pad = n => String(n).padStart(2, '0');
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${String(d.getFullYear()).slice(2)}`;
-  }
-
-  function makeChip(label, value) {
-    const chip = document.createElement('button');
-    chip.type = 'button'; chip.className = 'chip'; chip.textContent = label;
-    chip.addEventListener('click', async () => { await P.copyText(value || ''); P.showToast('Скопировано'); });
-    return chip;
-  }
-
-  // Маскированный чип пароля: обычный клик/Enter копирует пароль, Alt+клик/Alt+Enter
-  // раскрывает его текстом на 5 секунд. Один обработчик на событие с веткой по altKey —
-  // чтобы клик с зажатым Alt не запускал одновременно и копирование, и раскрытие.
-  function makeMaskedPassChip(password) {
-    const chip = document.createElement('button');
-    chip.type = 'button'; chip.className = 'chip mono'; chip.textContent = '••••••••';
-    let revealTimer = null;
-    function reveal() {
-      chip.textContent = password;
-      clearTimeout(revealTimer);
-      revealTimer = setTimeout(() => { chip.textContent = '••••••••'; }, 5000);
-    }
-    chip.addEventListener('click', async (e) => {
-      if (e.altKey) { reveal(); return; }
-      await P.copyText(password || ''); P.showToast('Скопировано');
-    });
-    chip.addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter' && e.altKey) { e.preventDefault(); reveal(); }
-      else if (e.key === 'Enter') { e.preventDefault(); await P.copyText(password || ''); P.showToast('Скопировано'); }
-    });
-    return chip;
   }
 
   let pendingUndo = null;

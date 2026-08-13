@@ -111,13 +111,26 @@
     </section>
 
     <section id="pane-log" data-pane role="tabpanel" aria-labelledby="tab-log" hidden>
-      <input id="log-search" type="search" placeholder="поиск">
-      <div id="log-list"></div>
-      <button id="log-more" type="button" hidden>Показать ещё</button>
-      <div class="actions">
-        <button id="btn-export-json" type="button">Выгрузить JSON</button>
-        <button id="btn-export-csv" type="button">Выгрузить CSV</button>
+      <div id="log-controls">
+        <section class="section-heading" aria-labelledby="log-title">
+          <div><p class="eyebrow">Локальные аккаунты</p><h1 id="log-title">Журнал</h1></div>
+          <span id="log-result-count" class="status-pill">Записей: 0</span>
+        </section>
+        <label class="field-label" for="log-search">Поиск по сайту, логину или почте</label>
+        <input id="log-search" type="search" placeholder="Например, example.com">
+        <div id="log-list" class="log-list"></div>
+        <button id="log-more" type="button" class="button button-secondary full-width" hidden>Показать ещё</button>
+
+        <section class="settings-section export-section" aria-labelledby="export-title">
+          <h2 id="export-title">Экспорт</h2>
+          <p class="muted">Файлы содержат пароли открытым текстом.</p>
+          <div class="secondary-actions">
+            <button id="btn-export-json" type="button" class="button button-secondary">Выгрузить JSON</button>
+            <button id="btn-export-csv" type="button" class="button button-secondary">Выгрузить CSV</button>
+          </div>
+        </section>
       </div>
+
       <div id="export-modal" hidden role="alertdialog">
         <p>В файле пароли открытым текстом. Он не защищён.</p>
         <button id="export-confirm" type="button">Выгрузить</button>

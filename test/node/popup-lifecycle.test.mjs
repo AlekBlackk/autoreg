@@ -103,7 +103,18 @@ const ENTRY = {
   note: '', createdAt: Date.now()
 };
 
-function delButton(row) { return row.children[row.children.length - 1]; }
+// Кнопка удаления больше не прямой ребёнок строки (Task 5: строка обёрнута в
+// .log-row-main/.log-row-data/.log-row-actions) — ищем по её стабильному aria-label,
+// а не по позиции среди детей.
+function delButton(row) {
+  const queue = [...row.children];
+  while (queue.length) {
+    const node = queue.shift();
+    if (node.tagName === 'BUTTON' && node.getAttribute('aria-label') === 'Удалить запись') return node;
+    queue.push(...(node.children || []));
+  }
+  return null;
+}
 
 // Удаление записи двухшаговое: кнопка ✕ открывает инлайн-плашку подтверждения,
 // удаление происходит только по «Удалить» в ней.
