@@ -49,3 +49,35 @@ test('selectTab ignores unknown tab names', async () => {
   assert.equal(h.RegLog.popup.activeTab(), 'new');
   assert.equal(h.el('pane-new').hidden, false);
 });
+
+test('Operational Grid CSS defines the complete semantic token set', () => {
+  const css = source('popup.css');
+  const tokens = [
+    '--canvas', '--surface', '--surface-raised', '--surface-hover', '--text', '--text-muted',
+    '--border', '--border-strong', '--accent', '--accent-hover', '--accent-text', '--warning',
+    '--danger', '--focus', '--radius-sm', '--radius-md', '--space-1', '--space-2', '--space-3',
+    '--space-4', '--control'
+  ];
+  for (const token of tokens) assert.match(css, new RegExp(`${token}\\s*:`));
+});
+
+test('Operational Grid CSS defines themes, targets, panel layout, and reduced motion', () => {
+  const css = source('popup.css');
+  assert.match(css, /color-scheme:\s*light dark/);
+  assert.match(css, /prefers-color-scheme:\s*dark/);
+  assert.match(css, /@media\s*\(min-width:\s*480px\)/);
+  assert.match(css, /--control:\s*44px/);
+  assert.match(css, /min-height:\s*(?:var\(--control\)|44px)/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /body\.panel\s+\.app-shell\s*\{/);
+});
+
+test('popup CSS does not import external assets', () => {
+  const css = source('popup.css');
+  assert.doesNotMatch(css, /@import|url\(\s*["']?https?:/i);
+});
+
+test('popup CSS no longer references legacy visual tokens', () => {
+  const css = source('popup.css');
+  assert.doesNotMatch(css, /var\(--(?:paper|card|ink|muted|line|warn)\)/);
+});
