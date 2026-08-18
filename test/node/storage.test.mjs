@@ -172,3 +172,33 @@ test('session LRU evicts the least recently touched, not the oldest created', as
   assert.equal(await store.getSession('s1.com'), null, 's1 — самый давно не тронутый');
   assert.ok(await store.getSession('new.com'));
 });
+
+test('init appends providers added after the stored snapshot was written', async () => {
+  const areas = fresh();
+  areas.local.set('schemaVersion', 2);
+  areas.local.set('settings', { providers: ['maildrop', 'mailtm', 'mailgw', 'guerrilla'] });
+  loadStorage();
+  await globalThis.RegLog.store.init();
+  const settings = await globalThis.RegLog.store.getSettings();
+  // порядок пользователя сохранён, новый провайдер дописан в хвост
+  assert.deepEqual(settings.providers, ['maildrop', 'mailtm', 'mailgw', 'guerrilla', 'dustmail']);
+});
+
+test('init drops provider ids that no longer have an adapter', async () => {
+  const areas = fresh();
+  areas.local.set('schemaVersion', 2);
+  areas.local.set('settings', { providers: ['mailtm', 'deadprovider', 'mailtm', 'guerrilla'] });
+  loadStorage();
+  globalThis.RegLog.mail = { adapters: [{ id: 'mailtm' }, { id: 'mailgw' }, { id: 'maildrop' }, { id: 'guerrilla' }, { id: 'dustmail' }] };
+  await globalThis.RegLog.store.init();
+  const settings = await globalThis.RegLog.store.getSettings();
+  assert.deepEqual(settings.providers, ['mailtm', 'guerrilla', 'mailgw', 'maildrop', 'dustmail']);
+});
+
+test('getSettings returns the stored provider list verbatim', async () => {
+  const areas = fresh();
+  areas.local.set('settings', { providers: ['mailtm'] });
+  loadStorage();
+  const settings = await globalThis.RegLog.store.getSettings();
+  assert.deepEqual(settings.providers, ['mailtm']);
+});
