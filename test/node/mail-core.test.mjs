@@ -142,10 +142,11 @@ test('health probe runs once per browser session, not on every acquire', async (
 test('healthCheck reports no-probe providers as healthy without touching the network', async () => {
   const RegLog = await freshMail();
   globalThis.fetch = async (url) => { throw new Error('unexpected url ' + url); };
-  // Guerrilla (get_email_address) and DustMail (POST /api/inbox) have no request
+  // Guerrilla (get_email_address), DustMail (POST /api/inbox) and Mail.cx (GET /v1/config) have no request
   // cheaper than create() itself — a separate probe would only double the traffic.
   assert.equal(await RegLog.mail.healthCheck('guerrilla'), true);
   assert.equal(await RegLog.mail.healthCheck('dustmail'), true);
+  assert.equal(await RegLog.mail.healthCheck('mailcx'), true);
   assert.equal(await RegLog.mail.healthCheck('dropmail'), false, 'disabled adapters are never healthy');
   assert.equal(await RegLog.mail.healthCheck('nope'), false);
 });

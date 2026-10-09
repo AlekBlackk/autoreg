@@ -393,7 +393,7 @@
       const adapter = RegLog.mail.adapters.find(a => a.id === session.provider);
       if (!adapter) { showUnknownProvider(session.provider); return; }
       try {
-        const list = await adapter.list(session);
+        const list = await adapter.list(session, { wait: false });
         clearInboxError();
         renderMailList(list);
       } catch (e) {
