@@ -411,3 +411,106 @@ test('tempmaillol.read tolerates a null html part', async () => {
   const body = await tempmaillol.read({ secret: { token: 't' } }, TEMPMAILLOL_EMAIL._id);
   assert.equal(body.html, '');
 });
+
+// --- Temp-Mail.io ------------------------------------------------------------
+
+const TEMPMAILIO_MESSAGE = {
+  id: '64479dc0-f201-4b8f-ad66-7366c123d122', from: '<probe@example.org>', to: 'amberharbork3m9x2p7qa@lnovic.com', cc: null,
+  subject: 'RegLog probe code 482913', body_text: 'Your verification code is 482913\n',
+  body_html: '<p>Your verification code is <b>482913</b></p>\n', created_at: '2026-11-03T11:25:49.412906Z', attachments: []
+};
+
+test('tempmailio.create posts only the name and takes the address from the response', async () => {
+  const RegLog = await freshMail();
+  let captured;
+  globalThis.fetch = async (url, options) => {
+    captured = { url, options };
+    return res(200, { email: 'amberharbork3m9x2p7qa@olipii.com', token: 'tok' });
+  };
+  const tempmailio = RegLog.mail.adapters.find(a => a.id === 'tempmailio');
+  const session = await tempmailio.create('amber-harbor-k3m9x2p7qa');
+  assert.equal(captured.url, 'https://api.internal.temp-mail.io/api/v3/email/new');
+  assert.deepEqual(JSON.parse(captured.options.body), { name: 'amber-harbor-k3m9x2p7qa' });
+  assert.equal(session.provider, 'tempmailio');
+  assert.equal(session.address, 'amberharbork3m9x2p7qa@olipii.com', 'the service strips hyphens, so the response wins');
+  assert.deepEqual(session.secret, {});
+});
+
+test('tempmailio.create maps a malformed body to shape and 429 to rate', async () => {
+  const RegLog = await freshMail();
+  const tempmailio = RegLog.mail.adapters.find(a => a.id === 'tempmailio');
+  globalThis.fetch = async () => res(200, { email: 'no-at-sign' });
+  await assert.rejects(
+    () => tempmailio.create('amber'),
+    (e) => e instanceof RegLog.mail.MailError && e.reason === 'shape'
+  );
+  globalThis.fetch = async () => res(429, {}, { 'Retry-After': '9' });
+  await assert.rejects(
+    () => tempmailio.create('amber'),
+    (e) => e instanceof RegLog.mail.MailError && e.reason === 'rate' && e.retryAfter === 9
+  );
+});
+
+test('tempmailio address fits acquire: sanitized local part keeps the random suffix for the public inbox', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSettings({ providers: ['tempmailio'], providersOff: [] });
+  let sentName;
+  globalThis.fetch = async (url, options) => {
+    sentName = JSON.parse(options.body).name;
+    return res(200, { email: `${sentName.replace(/-/g, '')}@olipii.com`, token: 't' });
+  };
+  const outcome = await RegLog.mail.acquire('signup.example', { localPart: 'extremelylongusernamethatdoesnotfit99' });
+  assert.equal(outcome.provider.id, 'tempmailio');
+  assert.ok(sentName.length <= 32);
+  assert.match(sentName, /-[a-z0-9]{10}$/, 'public inbox needs the random suffix');
+});
+
+test('tempmailio.list keeps the @ unencoded in the path, strips <> from the sender and maps messages', async () => {
+  const RegLog = await freshMail();
+  let capturedUrl;
+  globalThis.fetch = async (url) => {
+    capturedUrl = url;
+    return res(200, [TEMPMAILIO_MESSAGE, { id: 'm2', from: 'Shop <no-reply@shop.example>', subject: '', body_text: 'x'.repeat(200), created_at: 'garbage' }]);
+  };
+  const tempmailio = RegLog.mail.adapters.find(a => a.id === 'tempmailio');
+  const list = await tempmailio.list({ address: 'amber.k3m9x2p7qa@lnovic.com' });
+  assert.equal(capturedUrl, 'https://api.internal.temp-mail.io/api/v3/email/amber.k3m9x2p7qa@lnovic.com/messages');
+  assert.equal(list.length, 2);
+  assert.equal(list[0].id, TEMPMAILIO_MESSAGE.id);
+  assert.equal(list[0].from, 'probe@example.org');
+  assert.equal(list[0].subject, 'RegLog probe code 482913');
+  assert.equal(list[0].date, Date.parse('2026-11-03T11:25:49.412906Z'));
+  assert.equal(list[0].intro, 'Your verification code is 482913\n');
+  assert.equal(list[1].from, 'Shop <no-reply@shop.example>', 'only a bare <address> is unwrapped');
+  assert.equal(list[1].intro.length, 120);
+  assert.equal(typeof list[1].date, 'number');
+});
+
+test('tempmailio.list reports an unknown address (400) as expired, and other failures by reason', async () => {
+  const RegLog = await freshMail();
+  const tempmailio = RegLog.mail.adapters.find(a => a.id === 'tempmailio');
+  const session = { address: 'a@lnovic.com' };
+  const expectReason = async (response, reason) => {
+    globalThis.fetch = async () => response;
+    await assert.rejects(
+      () => tempmailio.list(session),
+      (e) => e instanceof RegLog.mail.MailError && e.reason === reason,
+      `${response.status} should map to ${reason}`
+    );
+  };
+  await expectReason(res(400, { code: 101, message: 'Email not found' }), 'expired');
+  await expectReason(res(200, { nope: true }), 'shape');
+  await expectReason(res(429, {}), 'rate');
+  await expectReason(res(500, {}), 'server');
+});
+
+test('tempmailio.read fetches body_text/body_html by encoded message id', async () => {
+  const RegLog = await freshMail();
+  let capturedUrl;
+  globalThis.fetch = async (url) => { capturedUrl = url; return res(200, TEMPMAILIO_MESSAGE); };
+  const tempmailio = RegLog.mail.adapters.find(a => a.id === 'tempmailio');
+  const body = await tempmailio.read({}, 'm1/../x');
+  assert.equal(capturedUrl, 'https://api.internal.temp-mail.io/api/v3/message/m1%2F..%2Fx');
+  assert.equal(body.text, 'Your verification code is 482913\n');
+  assert.equal(body.html, '<p>Your verification code is <b>482913</b></p>\n');
+});
