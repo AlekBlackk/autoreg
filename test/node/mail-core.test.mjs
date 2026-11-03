@@ -147,6 +147,7 @@ test('healthCheck reports no-probe providers as healthy without touching the net
   assert.equal(await RegLog.mail.healthCheck('guerrilla'), true);
   assert.equal(await RegLog.mail.healthCheck('dustmail'), true);
   assert.equal(await RegLog.mail.healthCheck('mailcx'), true);
+  assert.equal(await RegLog.mail.healthCheck('tempmaillol'), true);
   assert.equal(await RegLog.mail.healthCheck('dropmail'), false, 'disabled adapters are never healthy');
   assert.equal(await RegLog.mail.healthCheck('nope'), false);
 });

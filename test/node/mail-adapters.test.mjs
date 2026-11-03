@@ -118,7 +118,7 @@ test('dustmail.list returns MailError(expired) on HTTP 404 (expired/unknown inbo
   );
 });
 
-test('all seven adapters conform to contract 5.1 shape', async () => {
+test('all adapters conform to contract 5.1 shape', async () => {
   const RegLog = await freshMail();
   for (const a of RegLog.mail.adapters) {
     for (const field of ['id', 'label', 'canPickLocal', 'publicInbox', 'sessionTtlMs', 'bodyInList', 'localPartOpts', 'disabled']) {
@@ -310,4 +310,104 @@ test('poll drops a response that arrives after stop(), so a long poll cannot rep
   release();
   for (let i = 0; i < 20; i++) await new Promise(r => setImmediate(r));
   assert.deepEqual(batches, [], 'a stopped poll must not deliver batches');
+});
+
+// --- TempMail.lol ------------------------------------------------------------
+
+const TEMPMAILLOL_EMAIL = {
+  _id: '6ae9c4a952c54018406243c7', to: 'amber3889c2@jhf.arcadehearth.com', from: 'probe@example.org',
+  subject: 'RegLog probe code 482913', body: 'Your verification code is 482913',
+  html: '<p>Your verification code is <b>482913</b></p>', date: 1793705129830
+};
+
+test('tempmaillol.create posts the prefix and keeps the token, not the address, as the secret', async () => {
+  const RegLog = await freshMail();
+  let captured;
+  globalThis.fetch = async (url, options) => {
+    captured = { url, options };
+    return res(201, { address: 'amber-harbor3889c2@jhf.arcadehearth.com', token: 'tok-1' });
+  };
+  const tempmaillol = RegLog.mail.adapters.find(a => a.id === 'tempmaillol');
+  const session = await tempmaillol.create('amber-harbor');
+  assert.equal(captured.url, 'https://api.tempmail.lol/v2/inbox/create');
+  assert.equal(captured.options.method, 'POST');
+  assert.deepEqual(JSON.parse(captured.options.body), { prefix: 'amber-harbor' });
+  assert.equal(session.provider, 'tempmaillol');
+  assert.equal(session.address, 'amber-harbor3889c2@jhf.arcadehearth.com');
+  assert.deepEqual(session.secret, { token: 'tok-1' });
+});
+
+test('tempmaillol.create maps a malformed body to shape and 429 to rate with Retry-After', async () => {
+  const RegLog = await freshMail();
+  const tempmaillol = RegLog.mail.adapters.find(a => a.id === 'tempmaillol');
+  globalThis.fetch = async () => res(201, { address: 'a@b.c' });
+  await assert.rejects(
+    () => tempmaillol.create('amber'),
+    (e) => e instanceof RegLog.mail.MailError && e.reason === 'shape'
+  );
+  globalThis.fetch = async () => res(429, {}, { 'Retry-After': '45' });
+  await assert.rejects(
+    () => tempmaillol.create('amber'),
+    (e) => e instanceof RegLog.mail.MailError && e.reason === 'rate' && e.retryAfter === 45
+  );
+});
+
+test('tempmaillol.list encodes the token and maps emails[] with the preview taken from the body', async () => {
+  const RegLog = await freshMail();
+  let capturedUrl;
+  globalThis.fetch = async (url) => {
+    capturedUrl = url;
+    return res(200, { emails: [TEMPMAILLOL_EMAIL, { _id: 'm2', from: '', subject: '', body: 'x'.repeat(200), date: 'garbage' }], expired: false });
+  };
+  const tempmaillol = RegLog.mail.adapters.find(a => a.id === 'tempmaillol');
+  const list = await tempmaillol.list({ secret: { token: 'a/b c' } });
+  assert.equal(capturedUrl, 'https://api.tempmail.lol/v2/inbox?token=a%2Fb%20c');
+  assert.equal(list.length, 2);
+  assert.equal(list[0].id, TEMPMAILLOL_EMAIL._id);
+  assert.equal(list[0].from, 'probe@example.org');
+  assert.equal(list[0].subject, 'RegLog probe code 482913');
+  assert.equal(list[0].date, 1793705129830);
+  assert.equal(list[0].intro, 'Your verification code is 482913');
+  assert.equal(list[1].intro.length, 120);
+  assert.equal(typeof list[1].date, 'number');
+});
+
+test('tempmaillol.list reports an unknown or expired token as expired, and other failures by reason', async () => {
+  const RegLog = await freshMail();
+  const tempmaillol = RegLog.mail.adapters.find(a => a.id === 'tempmaillol');
+  const session = { secret: { token: 't' } };
+  const expectReason = async (response, reason) => {
+    globalThis.fetch = async () => response;
+    await assert.rejects(
+      () => tempmaillol.list(session),
+      (e) => e instanceof RegLog.mail.MailError && e.reason === reason,
+      `${response.status} ${JSON.stringify(response.body)} should map to ${reason}`
+    );
+  };
+  await expectReason(res(404, { emails: [], expired: true }), 'expired');
+  await expectReason(res(200, { emails: [], expired: true }), 'expired');
+  await expectReason(res(200, { nope: true }), 'shape');
+  await expectReason(res(500, {}), 'server');
+});
+
+test('tempmaillol.read finds the message in the inbox listing; a vanished message is expired', async () => {
+  const RegLog = await freshMail();
+  globalThis.fetch = async () => res(200, { emails: [TEMPMAILLOL_EMAIL], expired: false });
+  const tempmaillol = RegLog.mail.adapters.find(a => a.id === 'tempmaillol');
+  const session = { secret: { token: 't' } };
+  const body = await tempmaillol.read(session, TEMPMAILLOL_EMAIL._id);
+  assert.equal(body.text, 'Your verification code is 482913');
+  assert.equal(body.html, '<p>Your verification code is <b>482913</b></p>');
+  await assert.rejects(
+    () => tempmaillol.read(session, 'gone'),
+    (e) => e instanceof RegLog.mail.MailError && e.reason === 'expired'
+  );
+});
+
+test('tempmaillol.read tolerates a null html part', async () => {
+  const RegLog = await freshMail();
+  globalThis.fetch = async () => res(200, { emails: [{ ...TEMPMAILLOL_EMAIL, html: null }], expired: false });
+  const tempmaillol = RegLog.mail.adapters.find(a => a.id === 'tempmaillol');
+  const body = await tempmaillol.read({ secret: { token: 't' } }, TEMPMAILLOL_EMAIL._id);
+  assert.equal(body.html, '');
 });
