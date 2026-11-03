@@ -153,6 +153,18 @@ test('healthCheck reports no-probe providers as healthy without touching the net
   assert.equal(await RegLog.mail.healthCheck('nope'), false);
 });
 
+test('healthCheck probes tempmail.plus by reading a probe inbox, since its create() has no network', async () => {
+  const RegLog = await freshMail();
+  let probed;
+  globalThis.fetch = async (url) => { probed = url; return res(200, { result: true, mail_list: [], count: 0 }); };
+  assert.equal(await RegLog.mail.healthCheck('tempmailplus'), true);
+  assert.match(probed, /^https:\/\/tempmail\.plus\/api\/mails\?email=/);
+  globalThis.fetch = async () => res(500, {});
+  assert.equal(await RegLog.mail.healthCheck('tempmailplus'), false);
+  globalThis.fetch = async () => res(200, { result: false });
+  assert.equal(await RegLog.mail.healthCheck('tempmailplus'), false);
+});
+
 test('GraphQL 200 OK with errors body throws MailError(rate) via _checkGraphQLErrors', async () => {
   const RegLog = await freshMail();
   await assert.rejects(

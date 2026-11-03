@@ -526,3 +526,101 @@ test('tempmailio.read fetches body_text/body_html by encoded message id', async 
   assert.equal(body.text, 'Your verification code is 482913\n');
   assert.equal(body.html, '<p>Your verification code is <b>482913</b></p>\n');
 });
+
+// --- TempMail.plus -----------------------------------------------------------
+
+const TEMPMAILPLUS_LIST = {
+  count: 1, first_id: 2133609520, last_id: 2133609520, limit: 20, more: false, result: true,
+  mail_list: [{
+    attachment_count: 0, first_attachment_name: '', from_mail: 'probe@example.org', from_name: 'Probe Sender',
+    is_new: true, mail_id: 2133609520, subject: 'RegLog probe code 482913', time: '2026-11-03 13:25:50'
+  }]
+};
+
+test('tempmailplus.create makes no request and picks one of the service domains', async () => {
+  const RegLog = await freshMail();
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return res(200, {}); };
+  const tempmailplus = RegLog.mail.adapters.find(a => a.id === 'tempmailplus');
+  const session = await tempmailplus.create('amber-harbor-k3m9x2p7qa');
+  assert.equal(calls, 0);
+  assert.equal(session.provider, 'tempmailplus');
+  const [local, domain] = session.address.split('@');
+  assert.equal(local, 'amber-harbor-k3m9x2p7qa');
+  assert.match(domain, /^[a-z0-9.-]+\.[a-z]+$/);
+  assert.deepEqual(session.secret, {});
+});
+
+test('tempmailplus.list encodes the address, maps mail_list and derives seen from is_new', async () => {
+  const RegLog = await freshMail();
+  let capturedUrl;
+  globalThis.fetch = async (url) => {
+    capturedUrl = url;
+    return res(200, { ...TEMPMAILPLUS_LIST, mail_list: [
+      ...TEMPMAILPLUS_LIST.mail_list,
+      { mail_id: 7, from_mail: '', from_name: 'Only Name', subject: '', is_new: false, time: 'garbage' }
+    ] });
+  };
+  const tempmailplus = RegLog.mail.adapters.find(a => a.id === 'tempmailplus');
+  const list = await tempmailplus.list({ address: 'amber-k3m9x2p7qa@mailto.plus' });
+  assert.equal(capturedUrl, 'https://tempmail.plus/api/mails?email=amber-k3m9x2p7qa%40mailto.plus&limit=20&epin=');
+  assert.equal(list.length, 2);
+  assert.equal(list[0].id, '2133609520', 'ids are strings for the popup');
+  assert.equal(list[0].from, 'probe@example.org');
+  assert.equal(list[0].subject, 'RegLog probe code 482913');
+  assert.equal(list[0].seen, false);
+  assert.equal(list[1].from, 'Only Name', 'falls back to the display name when the address is empty');
+  assert.equal(list[1].seen, true);
+  assert.equal(typeof list[1].date, 'number');
+  assert.ok(Number.isFinite(list[1].date), 'an unparsable time falls back to now, not NaN');
+});
+
+test('tempmailplus reads the service time as Kyiv time, following its daylight saving', async () => {
+  const RegLog = await freshMail();
+  const tempmailplus = RegLog.mail.adapters.find(a => a.id === 'tempmailplus');
+  const dateOf = async (time) => {
+    globalThis.fetch = async () => res(200, { ...TEMPMAILPLUS_LIST, mail_list: [{ ...TEMPMAILPLUS_LIST.mail_list[0], time }] });
+    return (await tempmailplus.list({ address: 'a@mailto.plus' }))[0].date;
+  };
+  assert.equal(await dateOf('2026-11-03 13:25:50'), Date.parse('2026-11-03T11:25:50Z'), 'winter: UTC+2');
+  assert.equal(await dateOf('2026-07-03 13:25:50'), Date.parse('2026-07-03T10:25:50Z'), 'summer: UTC+3');
+});
+
+test('tempmailplus.list maps an unexpected body to shape and error statuses to their reasons', async () => {
+  const RegLog = await freshMail();
+  const tempmailplus = RegLog.mail.adapters.find(a => a.id === 'tempmailplus');
+  const session = { address: 'a@mailto.plus' };
+  const expectReason = async (response, reason) => {
+    globalThis.fetch = async () => response;
+    await assert.rejects(
+      () => tempmailplus.list(session),
+      (e) => e instanceof RegLog.mail.MailError && e.reason === reason,
+      `${response.status} ${JSON.stringify(response.body)} should map to ${reason}`
+    );
+  };
+  await expectReason(res(200, { result: false }), 'shape');
+  await expectReason(res(200, { result: true }), 'shape');
+  await expectReason(res(429, {}), 'rate');
+  await expectReason(res(500, {}), 'server');
+});
+
+test('tempmailplus.read fetches text/html by encoded id and address; result:false means the mail is gone', async () => {
+  const RegLog = await freshMail();
+  const tempmailplus = RegLog.mail.adapters.find(a => a.id === 'tempmailplus');
+  const session = { address: 'a@mailto.plus' };
+  let capturedUrl;
+  globalThis.fetch = async (url) => {
+    capturedUrl = url;
+    return res(200, { result: true, mail_id: 2133609520, text: 'Your verification code is 482913\n', html: '<p>Your verification code is <b>482913</b></p>\n' });
+  };
+  const body = await tempmailplus.read(session, '2133609520');
+  assert.equal(capturedUrl, 'https://tempmail.plus/api/mails/2133609520?email=a%40mailto.plus&epin=');
+  assert.equal(body.text, 'Your verification code is 482913\n');
+  assert.equal(body.html, '<p>Your verification code is <b>482913</b></p>\n');
+
+  globalThis.fetch = async () => res(200, { result: false });
+  await assert.rejects(
+    () => tempmailplus.read(session, '1'),
+    (e) => e instanceof RegLog.mail.MailError && e.reason === 'expired'
+  );
+});

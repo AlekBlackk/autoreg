@@ -181,7 +181,7 @@ test('init appends providers added after the stored snapshot was written', async
   await globalThis.RegLog.store.init();
   const settings = await globalThis.RegLog.store.getSettings();
   // порядок пользователя сохранён, новый провайдер дописан в хвост
-  assert.deepEqual(settings.providers, ['maildrop', 'mailtm', 'mailgw', 'guerrilla', 'dustmail', 'mailcx', 'tempmaillol', 'tempmailio']);
+  assert.deepEqual(settings.providers, ['maildrop', 'mailtm', 'mailgw', 'guerrilla', 'dustmail', 'mailcx', 'tempmaillol', 'tempmailio', 'tempmailplus']);
 });
 
 test('init drops provider ids that no longer have an adapter', async () => {
@@ -189,10 +189,10 @@ test('init drops provider ids that no longer have an adapter', async () => {
   areas.local.set('schemaVersion', 2);
   areas.local.set('settings', { providers: ['mailtm', 'deadprovider', 'mailtm', 'guerrilla'] });
   loadStorage();
-  globalThis.RegLog.mail = { adapters: [{ id: 'mailtm' }, { id: 'mailgw' }, { id: 'maildrop' }, { id: 'guerrilla' }, { id: 'dustmail' }, { id: 'mailcx' }, { id: 'tempmaillol' }, { id: 'tempmailio' }] };
+  globalThis.RegLog.mail = { adapters: [{ id: 'mailtm' }, { id: 'mailgw' }, { id: 'maildrop' }, { id: 'guerrilla' }, { id: 'dustmail' }, { id: 'mailcx' }, { id: 'tempmaillol' }, { id: 'tempmailio' }, { id: 'tempmailplus' }] };
   await globalThis.RegLog.store.init();
   const settings = await globalThis.RegLog.store.getSettings();
-  assert.deepEqual(settings.providers, ['mailtm', 'guerrilla', 'mailgw', 'maildrop', 'dustmail', 'mailcx', 'tempmaillol', 'tempmailio']);
+  assert.deepEqual(settings.providers, ['mailtm', 'guerrilla', 'mailgw', 'maildrop', 'dustmail', 'mailcx', 'tempmaillol', 'tempmailio', 'tempmailplus']);
 });
 
 test('getSettings returns the stored provider list verbatim', async () => {

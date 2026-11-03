@@ -15,7 +15,8 @@
     "https://dustmail.net/*",
     "https://mail.cx/v1/*",
     "https://api.tempmail.lol/*",
-    "https://api.internal.temp-mail.io/*"
+    "https://api.internal.temp-mail.io/*",
+    "https://tempmail.plus/api/*"
   ],
   "action": { "default_title": "RegLog", "default_popup": "popup.html" },
   "side_panel": { "default_path": "popup.html?panel=1" },

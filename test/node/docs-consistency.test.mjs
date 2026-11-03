@@ -55,7 +55,8 @@ test('manifest grants no host permission for a disabled adapter', () => {
   const HOSTS = {
     mailtm: 'api.mail.tm', mailgw: 'api.mail.gw', maildrop: 'api.maildrop.cc',
     dropmail: 'dropmail.me', guerrilla: 'api.guerrillamail.com', dustmail: 'dustmail.net', mailcx: 'mail.cx',
-    tempmaillol: 'api.tempmail.lol', tempmailio: 'api.internal.temp-mail.io'
+    tempmaillol: 'api.tempmail.lol', tempmailio: 'api.internal.temp-mail.io',
+    tempmailplus: 'tempmail.plus'
   };
   const granted = manifest.host_permissions.map(o => o.replace(/^\w+:\/\//, '').replace(/\/.*$/, ''));
   for (const adapter of adapters()) {
