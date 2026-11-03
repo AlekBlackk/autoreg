@@ -444,3 +444,43 @@ test('splitLinkChips на пустой строке отдаёт пустой с
   const RegLog = await freshMail();
   assert.deepEqual(RegLog.mail.splitLinkChips(''), []);
 });
+
+// --- порядок выдачи: сначала сервисы, не использованные на сайте ---------------
+
+function mockMaildropAndMailgw() {
+  globalThis.fetch = async (url) => {
+    if (url === 'https://api.maildrop.cc/graphql') return res(200, { data: { ping: 'reglog' } });
+    if (url.endsWith('/domains')) return res(200, [{ domain: 'gw.tld', isActive: true, isPrivate: false }]);
+    if (url.endsWith('/accounts')) return res(201, { id: 'acc' });
+    if (url.endsWith('/token')) return res(200, { token: 'tok' });
+    throw new Error('unexpected url ' + url);
+  };
+}
+
+test('acquire hands out a provider not yet used on the site before one already in the journal', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSettings({ providers: ['maildrop', 'mailgw'], providersOff: [] });
+  await RegLog.store.addEntry({ host: 'elevenlabs.io', provider: 'maildrop', email: 'a@maildrop.cc' });
+  mockMaildropAndMailgw();
+  const outcome = await RegLog.mail.acquire('elevenlabs.io', { localPart: 'amber-harbor-4711' });
+  assert.equal(outcome.provider.id, 'mailgw', 'maildrop is first in settings but already has an account on this site');
+});
+
+test('acquire keeps the settings order when the site has no journal entries, and other sites do not count', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSettings({ providers: ['maildrop', 'mailgw'], providersOff: [] });
+  await RegLog.store.addEntry({ host: 'other.example', provider: 'maildrop', email: 'a@maildrop.cc' });
+  mockMaildropAndMailgw();
+  const outcome = await RegLog.mail.acquire('elevenlabs.io', { localPart: 'amber-harbor-4711' });
+  assert.equal(outcome.provider.id, 'maildrop');
+});
+
+test('acquire falls back to a used provider when every available one has been used on the site', async () => {
+  const RegLog = await freshMail();
+  await RegLog.store.setSettings({ providers: ['maildrop', 'mailgw'], providersOff: [] });
+  await RegLog.store.addEntry({ host: 'elevenlabs.io', provider: 'maildrop', email: 'a@maildrop.cc' });
+  await RegLog.store.addEntry({ host: 'elevenlabs.io', provider: 'mailgw', email: 'a@gw.tld' });
+  mockMaildropAndMailgw();
+  const outcome = await RegLog.mail.acquire('elevenlabs.io', { localPart: 'amber-harbor-4711' });
+  assert.equal(outcome.provider.id, 'maildrop', 'used providers stay as a fallback in the user order');
+});
