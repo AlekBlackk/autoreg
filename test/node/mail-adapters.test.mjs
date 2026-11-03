@@ -404,6 +404,18 @@ test('tempmaillol.read finds the message in the inbox listing; a vanished messag
   );
 });
 
+test('tempmaillol.read right after list() reuses the listing: the service answers 429 to a second inbox request within a second', async () => {
+  const RegLog = await freshMail();
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return res(200, { emails: [TEMPMAILLOL_EMAIL], expired: false }); };
+  const tempmaillol = RegLog.mail.adapters.find(a => a.id === 'tempmaillol');
+  const session = { secret: { token: 't' } };
+  await tempmaillol.list(session);
+  const body = await tempmaillol.read(session, TEMPMAILLOL_EMAIL._id);
+  assert.equal(calls, 1);
+  assert.equal(body.text, 'Your verification code is 482913');
+});
+
 test('tempmaillol.read tolerates a null html part', async () => {
   const RegLog = await freshMail();
   globalThis.fetch = async () => res(200, { emails: [{ ...TEMPMAILLOL_EMAIL, html: null }], expired: false });
