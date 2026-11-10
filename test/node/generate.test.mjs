@@ -19,6 +19,23 @@ test('password respects length and required classes', () => {
   assert.ok(/[a-z]/.test(p) && /[A-Z]/.test(p) && /[2-9]/.test(p) && /[!@#$%^&*\-_=+?]/.test(p));
 });
 
+test('password with symbols contains exactly one "!"', () => {
+  for (let i = 0; i < 200; i++) {
+    const p = gen.password(20, true);
+    assert.equal(p.split('!').length - 1, 1);
+  }
+  assert.ok(!gen.password(20, false).includes('!'));
+});
+
+test('safe preset has length 16 and exactly one "!" with no other symbols', () => {
+  for (let i = 0; i < 200; i++) {
+    const p = gen.passwordForPolicy('safe');
+    assert.equal(p.length, 16);
+    assert.match(p, /^[A-Za-z0-9]*![A-Za-z0-9]*$/);
+    assert.ok(!/[@#$%^&*\-_=+?]/.test(p));
+  }
+});
+
 test('password respects len even when len is smaller than the number of active classes', () => {
   assert.equal(gen.password(2, false).length, 2);
   assert.equal(gen.password(1, true).length, 1);
